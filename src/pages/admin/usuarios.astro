@@ -36,8 +36,9 @@ const users = (authList?.users ?? []).map(u => ({
   return (a.profile?.username ?? '').localeCompare(b.profile?.username ?? '');
 });
 
-const jugadores = users.filter(u => !u.profile?.es_referi);
-const referis   = users.filter(u =>  u.profile?.es_referi);
+const jugadores  = users.filter(u => !u.profile?.es_referi);
+const referis    = users.filter(u =>  u.profile?.es_referi);
+const participes = users.filter(u =>  u.profile?.participa && !u.profile?.expulsado);
 
 function initials(name: string) {
   return name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
@@ -61,7 +62,7 @@ function avatarColor(id: string) {
       <div>
         <h1 class="font-display text-4xl text-white tracking-wide">USUARIOS</h1>
         <p class="text-slate-500 text-sm mt-1">
-          {jugadores.length} jugador{jugadores.length !== 1 ? 'es' : ''} · {referis.length} réferi{referis.length !== 1 ? 's' : ''}
+          {participes.length} participante{participes.length !== 1 ? 's' : ''} · {referis.length} réferi{referis.length !== 1 ? 's' : ''}
         </p>
       </div>
       <a href="/admin" class="text-xs text-slate-500 hover:text-white transition px-3 py-1.5 border border-brand-700 rounded-lg">
@@ -72,15 +73,15 @@ function avatarColor(id: string) {
     {/* ── Stats rápidas ── */}
     <div class="grid grid-cols-3 gap-3">
       <div class="bg-brand-900 border border-brand-700/60 rounded-2xl p-4 text-center">
-        <div class="font-display text-3xl text-white">{jugadores.length}</div>
-        <div class="text-xs text-slate-500 mt-1">Jugadores</div>
+        <div class="font-display text-3xl text-white">{participes.length}</div>
+        <div class="text-xs text-slate-500 mt-1">Participantes</div>
       </div>
       <div class="bg-brand-900 border border-brand-700/60 rounded-2xl p-4 text-center">
-        <div class="font-display text-3xl text-gol">{jugadores.filter(u => u.profile?.pago_70).length}</div>
+        <div class="font-display text-3xl text-gol">{participes.filter(u => u.profile?.pago_70).length}</div>
         <div class="text-xs text-slate-500 mt-1">Pagaron</div>
       </div>
       <div class="bg-brand-900 border border-brand-700/60 rounded-2xl p-4 text-center">
-        <div class="font-display text-3xl text-fifared">{jugadores.filter(u => u.profile?.expulsado).length}</div>
+        <div class="font-display text-3xl text-fifared">{users.filter(u => u.profile?.expulsado).length}</div>
         <div class="text-xs text-slate-500 mt-1">Expulsados</div>
       </div>
     </div>
