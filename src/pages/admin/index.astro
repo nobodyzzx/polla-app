@@ -232,6 +232,15 @@ function formatDate(d: string) {
             <p class="text-xs text-slate-600 text-center">Pronósticos aleatorios</p>
           </div>
           <div class="space-y-1">
+            <form method="POST" action="/api/admin/simulate-results" id="form-simulate-results">
+              <button type="submit"
+                class="w-full bg-gol/10 border border-gol/30 text-gol text-sm font-semibold px-2 py-3 rounded-xl transition active:bg-gol/20 min-h-[48px]">
+                ⚽ Simular Resultados
+              </button>
+            </form>
+            <p class="text-xs text-slate-600 text-center">Marca partidos jugados</p>
+          </div>
+          <div class="space-y-1">
             <form method="POST" action="/api/admin/clear-matches" id="form-clear">
               <button type="submit"
                 class="w-full bg-fifared/8 border border-fifared/30 text-fifared text-sm font-semibold px-2 py-3 rounded-xl transition active:bg-fifared/20 min-h-[48px]">
