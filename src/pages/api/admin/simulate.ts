@@ -74,6 +74,8 @@ export const POST: APIRoute = async ({ cookies, redirect }) => {
     const diff = matchTime - now; // ms hasta el partido
     if (m.is_finished) {
       finished.push(m);
+    } else if (diff <= 0) {
+      finished.push(m);   // pasado sin resultado → tratar como terminado para generar pronósticos
     } else if (diff > 2 * 3_600_000) {
       openSoon.push(m);   // >2h → abierto
     } else {

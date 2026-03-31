@@ -232,6 +232,15 @@ function formatDate(d: string) {
             <p class="text-xs text-slate-600 text-center">Pronósticos aleatorios</p>
           </div>
           <div class="space-y-1">
+            <form method="POST" action="/api/admin/advance-dates" id="form-advance">
+              <button type="submit"
+                class="w-full bg-gold/10 border border-gold/30 text-gold text-sm font-semibold px-2 py-3 rounded-xl transition active:bg-gold/20 min-h-[48px]">
+                ⏩ Adelantar Fechas
+              </button>
+            </form>
+            <p class="text-xs text-slate-600 text-center">Todo al pasado</p>
+          </div>
+          <div class="space-y-1">
             <form method="POST" action="/api/admin/simulate-results" id="form-simulate-results">
               <button type="submit"
                 class="w-full bg-gol/10 border border-gol/30 text-gol text-sm font-semibold px-2 py-3 rounded-xl transition active:bg-gol/20 min-h-[48px]">
