@@ -35,7 +35,7 @@ const { data: finishedMatches } = await supabase
   .order('match_date', { ascending: false })
   .limit(10);
 
-const { data: profiles } = await supabase
+const { data: profiles } = await supabaseAdmin
   .from('profiles')
   .select('*')
   .order('expulsado', { ascending: true })
@@ -481,8 +481,8 @@ function formatDate(d: string) {
             <div class="grid grid-cols-2 gap-2">
               <form method="POST" action="/api/admin/payment">
                 <input type="hidden" name="userId" value={p.id} />
-                <input type="hidden" name="pago70" value={p.pago_70 ? 'false' : 'true'} />
-                <input type="hidden" name="pago50" value={p.pago_70 ? 'false' : p.pago_50.toString()} />
+                <input type="hidden" name="field" value="pago70" />
+                <input type="hidden" name="value" value={p.pago_70 ? 'false' : 'true'} />
                 <button type="submit"
                   class={`w-full text-sm px-3 py-3 rounded-xl border transition min-h-[48px] ${p.pago_70 ? 'bg-gol/10 border-gol/40 text-gol font-semibold' : 'bg-brand-800 border-brand-700 text-slate-400'}`}>
                   {p.pago_70 ? '✓ 70 Bs' : '💰 70 Bs'}
@@ -490,8 +490,8 @@ function formatDate(d: string) {
               </form>
               <form method="POST" action="/api/admin/payment">
                 <input type="hidden" name="userId" value={p.id} />
-                <input type="hidden" name="pago70" value="true" />
-                <input type="hidden" name="pago50" value={p.pago_50 ? 'false' : 'true'} />
+                <input type="hidden" name="field" value="pago50" />
+                <input type="hidden" name="value" value={p.pago_50 ? 'false' : 'true'} />
                 <button type="submit" disabled={!p.pago_70}
                   class={`w-full text-sm px-3 py-3 rounded-xl border transition min-h-[48px] ${!p.pago_70 ? 'bg-brand-800/40 border-brand-700/30 text-slate-600 cursor-not-allowed' : p.pago_50 ? 'bg-gol/10 border-gol/40 text-gol font-semibold' : 'bg-brand-800 border-brand-700 text-slate-400'}`}>
                   {p.pago_50 ? '✓ 50 Bs' : '💰 50 Bs'}
