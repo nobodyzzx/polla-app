@@ -177,7 +177,8 @@ export const POST: APIRoute = async ({ cookies, redirect }) => {
   // ── Insertar pronósticos ──────────────────────────────────
   const BATCH = 50;
   for (let i = 0; i < predRows.length; i += BATCH) {
-    const { error } = await supabaseAdmin.from('predictions').insert(predRows.slice(i, i + BATCH));
+    const { error } = await supabaseAdmin.from('predictions')
+      .upsert(predRows.slice(i, i + BATCH), { onConflict: 'user_id,match_id', ignoreDuplicates: true });
     if (error) return redirect(`/admin?err=${encodeURIComponent('Error pronósticos: ' + error.message)}`);
   }
 
