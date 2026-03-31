@@ -1,0 +1,52 @@
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+/* Twemoji Country Flags — must be first so the polyfill @font-face
+   takes priority for regional indicator codepoints on Windows/Linux */
+@layer base {
+  body {
+    font-family: "Twemoji Country Flags", "Inter", ui-sans-serif, system-ui, sans-serif;
+
+    /* Patrón hexagonal sutil — evoca la textura de un balón de fútbol */
+    background-color: #060B15;
+    background-image:
+      linear-gradient(30deg,  rgba(25,45,74,0.18) 12%, transparent 12.5%, transparent 87%, rgba(25,45,74,0.18) 87.5%),
+      linear-gradient(150deg, rgba(25,45,74,0.18) 12%, transparent 12.5%, transparent 87%, rgba(25,45,74,0.18) 87.5%),
+      linear-gradient(30deg,  rgba(25,45,74,0.18) 12%, transparent 12.5%, transparent 87%, rgba(25,45,74,0.18) 87.5%),
+      linear-gradient(150deg, rgba(25,45,74,0.18) 12%, transparent 12.5%, transparent 87%, rgba(25,45,74,0.18) 87.5%),
+      linear-gradient(60deg,  rgba(25,45,74,0.12) 25%, transparent 25.5%, transparent 75%, rgba(25,45,74,0.12) 75%),
+      linear-gradient(60deg,  rgba(25,45,74,0.12) 25%, transparent 25.5%, transparent 75%, rgba(25,45,74,0.12) 75%);
+    background-size: 40px 70px;
+    background-position: 0 0, 0 0, 20px 35px, 20px 35px, 0 0, 20px 35px;
+  }
+}
+
+@theme {
+  /* Display font — use with class="font-display" */
+  --font-display: "Bebas Neue", ui-sans-serif;
+
+  /* Brand navy scale */
+  --color-brand-950: #060B15;
+  --color-brand-900: #0B1422;
+  --color-brand-800: #101E32;
+  --color-brand-700: #192D4A;
+  --color-brand-600: #213C62;
+
+  /* Gold */
+  --color-gold:       #F0A500;
+  --color-gold-light: #FFD166;
+  --color-gold-dark:  #C07D00;
+
+  /* FIFA Red */
+  --color-fifared:      #C8102E;
+  --color-fifared-dark: #9C0D23;
+
+  /* Legacy tokens kept for compatibility */
+  --color-gol:       #22c55e;
+  --color-gol-hover: #16a34a;
+  --color-amarilla:  #F0A500;
+  --color-roja:      #C8102E;
+  --color-pozo:      #F0A500;
+  --color-surface:   #0B1422;
+  --color-border:    #192D4A;
+}

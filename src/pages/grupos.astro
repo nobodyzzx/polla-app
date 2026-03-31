@@ -1,0 +1,385 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import { supabase } from '@/lib/supabase';
+import { flagUrl } from '@/lib/flags';
+
+const accessToken = Astro.cookies.get('sb-access-token')?.value;
+const refreshToken = Astro.cookies.get('sb-refresh-token')?.value;
+if (!accessToken || !refreshToken) { Astro.cookies.delete("sb-access-token", { path: "/" }); Astro.cookies.delete("sb-refresh-token", { path: "/" }); return Astro.redirect("/login"); }
+
+const { data: { user } } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+if (!user) { Astro.cookies.delete("sb-access-token", { path: "/" }); Astro.cookies.delete("sb-refresh-token", { path: "/" }); return Astro.redirect("/login"); }
+
+const [
+  { data: navProfile },
+  { data: rawMatches },
+  { data: knockoutMatches },
+] = await Promise.all([
+  supabase.from('profiles').select('username, puntos_totales, es_referi').eq('id', user.id).single(),
+  supabase.from('matches').select('id, home_team, away_team, home_score, away_score, is_finished, group_name, match_date').eq('stage', 'group').order('group_name', { ascending: true }).order('match_date', { ascending: true }),
+  supabase.from('matches').select('home_team, away_team, home_score, away_score, home_pen, away_pen, winner_penalties, is_finished, round, match_date').eq('stage', 'knockout').order('match_date', { ascending: true }),
+]);
+
+// ── Eliminatorias por ronda ────────────────────────────────────
+const ROUND_ORDER = ['Playoffs', 'R32', 'R16', 'Cuartos', 'Semifinal', 'Tercer Puesto', 'Final'];
+const knockoutRounds = new Map<string, any[]>();
+for (const m of (knockoutMatches ?? [])) {
+  const r = (m.round as string) ?? 'Sin ronda';
+  if (!knockoutRounds.has(r)) knockoutRounds.set(r, []);
+  knockoutRounds.get(r)!.push(m);
+}
+const sortedRounds = [...knockoutRounds.entries()].sort(([a], [b]) => {
+  const ia = ROUND_ORDER.indexOf(a), ib = ROUND_ORDER.indexOf(b);
+  return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+});
+
+// ── Tabla de grupos ────────────────────────────────────────────
+type TeamRow = { team: string; pj: number; g: number; e: number; p: number; gf: number; gc: number; dg: number; pts: number };
+const groupMap   = new Map<string, Map<string, TeamRow>>();
+const groupMatchesMap = new Map<string, any[]>();
+
+for (const m of (rawMatches ?? [])) {
+  const grp = (m.group_name as string) ?? '—';
+  if (!groupMap.has(grp)) groupMap.set(grp, new Map());
+  if (!groupMatchesMap.has(grp)) groupMatchesMap.set(grp, []);
+  groupMatchesMap.get(grp)!.push(m);
+
+  const table = groupMap.get(grp)!;
+  for (const team of [m.home_team, m.away_team])
+    if (!table.has(team)) table.set(team, { team, pj: 0, g: 0, e: 0, p: 0, gf: 0, gc: 0, dg: 0, pts: 0 });
+
+  if (!m.is_finished) continue;
+  const home = table.get(m.home_team)!, away = table.get(m.away_team)!;
+  const hs = m.home_score as number, as_ = m.away_score as number;
+  home.pj++; away.pj++;
+  home.gf += hs; home.gc += as_;
+  away.gf += as_; away.gc += hs;
+  if (hs > as_)      { home.g++; home.pts += 3; away.p++; }
+  else if (hs < as_) { away.g++; away.pts += 3; home.p++; }
+  else               { home.e++; home.pts++; away.e++; away.pts++; }
+  home.dg = home.gf - home.gc;
+  away.dg = away.gf - away.gc;
+}
+
+const groups = [...groupMap.entries()]
+  .sort(([a], [b]) => (a ?? '').localeCompare(b ?? ''))
+  .map(([name, table]) => {
+    const teams = [...table.values()].sort((a, b) =>
+      b.pts - a.pts || b.dg - a.dg || b.gf - a.gf || a.team.localeCompare(b.team)
+    );
+    const allPlayed = teams.every(t => t.pj === 3);
+    return { name, teams, allPlayed, matches: groupMatchesMap.get(name) ?? [] };
+  });
+
+function fmtDate(d: string) {
+  return new Date(d).toLocaleString('es-BO', {
+    day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+    timeZone: 'America/La_Paz',
+  });
+}
+function fmtDateShort(d: string) {
+  return new Date(d).toLocaleString('es-BO', {
+    weekday: 'short', day: '2-digit', month: 'short',
+    hour: '2-digit', minute: '2-digit',
+    timeZone: 'America/La_Paz',
+  });
+}
+---
+
+<Layout title="Grupos" navProfile={navProfile} isAuthed={true}>
+  <div class="space-y-6">
+
+    {/* ── Header + Tabs ── */}
+    <div class="flex items-center justify-between gap-2">
+      <h1 class="font-display text-4xl text-white tracking-wide">GRUPOS</h1>
+      <span class="text-xs text-slate-500 bg-brand-900 border border-brand-700 px-3 py-1.5 rounded-full">Mundial 2026</span>
+    </div>
+
+    {(groups.length > 0 || sortedRounds.length > 0) && (
+      <div class="flex gap-1 bg-brand-900 border border-brand-700/60 p-1 rounded-xl w-fit">
+        <button id="tab-btn-grupos"
+          onclick="switchTab('grupos')"
+          class="tab-btn px-4 py-2 rounded-lg text-sm font-semibold transition bg-brand-700 text-white">
+          Grupos {groups.length > 0 && <span class="text-xs text-slate-400 font-normal ml-1">({groups.length})</span>}
+        </button>
+        <button id="tab-btn-eliminatorias"
+          onclick="switchTab('eliminatorias')"
+          class="tab-btn px-4 py-2 rounded-lg text-sm font-semibold transition text-slate-400 hover:text-white">
+          Eliminatorias {sortedRounds.length > 0 && <span class="text-xs text-slate-500 font-normal ml-1">({sortedRounds.length} rondas)</span>}
+        </button>
+      </div>
+    )}
+
+    {/* ══════════════════════════════════════════
+        TAB: GRUPOS
+    ══════════════════════════════════════════ */}
+    <div id="tab-grupos">
+
+      {groups.length === 0 && (
+        <div class="text-center py-20 text-slate-600">
+          <div class="text-5xl mb-4">📋</div>
+          <p class="text-base">No hay partidos de grupo disponibles.</p>
+        </div>
+      )}
+
+      <div class="grid gap-4 sm:grid-cols-2">
+        {groups.map(({ name, teams, allPlayed, matches }) => (
+          <div class="bg-brand-900 border border-brand-700/60 rounded-2xl overflow-hidden">
+
+            {/* Cabecera del grupo */}
+            <div class="px-4 py-3 bg-brand-800/60 border-b border-brand-700/60 flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <span class="font-display text-lg text-white tracking-wide">GRUPO {name}</span>
+                {allPlayed && <span class="text-[10px] bg-gol/20 text-gol px-2 py-0.5 rounded-full font-bold uppercase tracking-wide">Completo</span>}
+              </div>
+              <div class="flex gap-2 text-[10px] text-slate-500 font-mono uppercase">
+                <span class="w-5 text-center">PJ</span>
+                <span class="w-5 text-center">G</span>
+                <span class="w-5 text-center">E</span>
+                <span class="w-5 text-center">P</span>
+                <span class="w-7 text-center">GF:GC</span>
+                <span class="w-6 text-center">DG</span>
+                <span class="w-7 text-center font-bold text-slate-400">Pts</span>
+              </div>
+            </div>
+
+            {/* Equipos */}
+            {teams.map((t, i) => {
+              const classified = allPlayed && i < 2;
+              return (
+                <div class={`px-4 py-2.5 flex items-center justify-between border-b border-brand-800/40 last:border-0 ${classified ? 'bg-gold/5' : i === 2 && !allPlayed ? 'bg-brand-800/20' : ''}`}>
+                  <div class="flex items-center gap-2 min-w-0 flex-1">
+                    <span class={`text-xs font-bold w-4 flex-shrink-0 ${classified ? 'text-gold' : i < 2 ? 'text-slate-400' : 'text-slate-600'}`}>
+                      {i + 1}
+                    </span>
+                    {flagUrl(t.team, '20x15') && (
+                      <img src={flagUrl(t.team, '20x15')!} width="20" height="15" class="flex-shrink-0 rounded-sm" loading="lazy" />
+                    )}
+                    <span class={`text-sm font-semibold truncate ${classified ? 'text-white' : i < 2 ? 'text-slate-200' : 'text-slate-400'}`}>
+                      {t.team}
+                    </span>
+                    {classified && (
+                      <span class="text-[9px] text-gold/60 font-bold hidden sm:inline">✓</span>
+                    )}
+                  </div>
+                  <div class="flex gap-2 text-xs font-mono flex-shrink-0">
+                    <span class="w-5 text-center text-slate-400">{t.pj}</span>
+                    <span class="w-5 text-center text-slate-400">{t.g}</span>
+                    <span class="w-5 text-center text-slate-400">{t.e}</span>
+                    <span class="w-5 text-center text-slate-400">{t.p}</span>
+                    <span class="w-7 text-center text-slate-500">{t.gf}:{t.gc}</span>
+                    <span class={`w-6 text-center ${t.dg > 0 ? 'text-gol' : t.dg < 0 ? 'text-roja' : 'text-slate-500'}`}>
+                      {t.dg > 0 ? `+${t.dg}` : t.dg}
+                    </span>
+                    <span class={`w-7 text-center font-bold ${classified ? 'text-gold' : 'text-white'}`}>
+                      {t.pts}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Partidos del grupo (colapsables) */}
+            {matches.length > 0 && (
+              <details class="group/det border-t border-brand-800/60">
+                <summary class="flex items-center justify-between px-4 py-2.5 cursor-pointer list-none select-none text-xs text-slate-500 hover:text-slate-300 transition">
+                  <span>Ver partidos ({matches.filter((m: any) => m.is_finished).length}/{matches.length} jugados)</span>
+                  <svg class="w-3.5 h-3.5 transition-transform group-open/det:rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+                  </svg>
+                </summary>
+                <div class="border-t border-brand-800/40 divide-y divide-brand-800/40">
+                  {matches.map((m: any) => (
+                    <div class="px-4 py-2 flex items-center gap-2 text-xs">
+                      <div class={`flex-1 flex items-center justify-end gap-1.5 min-w-0 ${m.is_finished ? 'text-slate-300' : 'text-slate-500'}`}>
+                        <span class="truncate">{m.home_team}</span>
+                        {flagUrl(m.home_team, '16x12') && <img src={flagUrl(m.home_team, '16x12')!} width="16" height="12" class="flex-shrink-0 rounded-sm" loading="lazy" />}
+                      </div>
+                      <div class="flex-shrink-0 text-center w-20">
+                        {m.is_finished ? (
+                          <span class="font-display text-sm text-white">{m.home_score}–{m.away_score}</span>
+                        ) : (
+                          <span class="text-[10px] text-slate-600">{fmtDate(m.match_date)}</span>
+                        )}
+                      </div>
+                      <div class={`flex-1 flex items-center gap-1.5 min-w-0 ${m.is_finished ? 'text-slate-300' : 'text-slate-500'}`}>
+                        {flagUrl(m.away_team, '16x12') && <img src={flagUrl(m.away_team, '16x12')!} width="16" height="12" class="flex-shrink-0 rounded-sm" loading="lazy" />}
+                        <span class="truncate">{m.away_team}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
+
+          </div>
+        ))}
+      </div>
+
+      {/* Leyenda */}
+      {groups.length > 0 && (
+        <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600 pb-2">
+          <div class="flex items-center gap-1.5">
+            <div class="w-3 h-3 rounded-sm bg-gold/20 border border-gold/30"></div>
+            <span>Clasifican directamente (Top 2 por grupo)</span>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <div class="w-3 h-3 rounded-sm bg-brand-700/40 border border-brand-600/40"></div>
+            <span>Los 8 mejores terceros también avanzan al R32</span>
+          </div>
+        </div>
+      )}
+    </div>
+
+    {/* ══════════════════════════════════════════
+        TAB: ELIMINATORIAS
+    ══════════════════════════════════════════ */}
+    <div id="tab-eliminatorias" class="hidden space-y-6">
+
+      {sortedRounds.length === 0 && (
+        <div class="text-center py-20 text-slate-600">
+          <div class="text-5xl mb-4">🏆</div>
+          <p class="text-base">Las eliminatorias aún no han comenzado.</p>
+        </div>
+      )}
+
+      {sortedRounds.map(([round, rMatches]) => {
+        const isFinal   = round === 'Final';
+        const is3rd     = round === 'Tercer Puesto';
+        const isLate    = isFinal || is3rd;
+        return (
+          <div class="space-y-3">
+
+            {/* Cabecera de ronda */}
+            <div class="flex items-center gap-3">
+              <div class={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider border ${
+                isFinal ? 'bg-gold/15 border-gold/50 text-gold' :
+                is3rd   ? 'bg-slate-700/40 border-slate-600/50 text-slate-400' :
+                          'bg-brand-800/60 border-brand-700 text-slate-400'
+              }`}>
+                {isFinal && '🏆 '}{round}
+              </div>
+              <div class="flex-1 h-px bg-brand-800" />
+              <span class="text-xs text-slate-600">{rMatches?.length} partido{(rMatches?.length ?? 0) !== 1 ? 's' : ''}</span>
+            </div>
+
+            {/* Partidos de la ronda */}
+            <div class={`grid gap-2 ${(rMatches?.length ?? 0) > 1 ? 'sm:grid-cols-2' : ''}`}>
+              {(rMatches ?? []).map((m: any) => {
+                const finished = m.is_finished;
+                const hs = m.home_score as number | null;
+                const as_ = m.away_score as number | null;
+                const homeWon = finished && hs !== null && as_ !== null && (hs > as_ || (hs === as_ && m.winner_penalties === 'home'));
+                const awayWon = finished && hs !== null && as_ !== null && (as_ > hs || (hs === as_ && m.winner_penalties === 'away'));
+                const isTBDHome = m.home_team?.startsWith('TBD') || !m.home_team;
+                const isTBDAway = m.away_team?.startsWith('TBD') || !m.away_team;
+
+                return (
+                  <div class={`border rounded-2xl overflow-hidden ${
+                    isFinal ? 'border-gold/40 bg-gradient-to-b from-gold/5 to-brand-900' :
+                    is3rd   ? 'border-slate-600/40 bg-brand-900' :
+                              'border-brand-700/60 bg-brand-900'
+                  }`}>
+
+                    {/* Fecha si no está terminado */}
+                    {!finished && (
+                      <div class="px-4 pt-2.5 text-center">
+                        <span class="text-[11px] text-slate-500">{fmtDateShort(m.match_date)}</span>
+                      </div>
+                    )}
+
+                    {/* Partido */}
+                    <div class="px-4 py-3 flex items-center gap-3">
+
+                      {/* Local */}
+                      <div class="flex-1 text-right min-w-0 space-y-0.5">
+                        {isTBDHome ? (
+                          <span class="text-xs text-slate-600 italic block">Por definir</span>
+                        ) : (
+                          <div class={`flex items-center justify-end gap-1.5 ${
+                            finished ? (homeWon ? 'text-white' : 'text-slate-500') : 'text-slate-200'
+                          }`}>
+                            <span class="text-sm font-semibold truncate">{m.home_team}</span>
+                            {flagUrl(m.home_team, '20x15') && <img src={flagUrl(m.home_team, '20x15')!} width="20" height="15" class="flex-shrink-0 rounded-sm" loading="lazy" />}
+                          </div>
+                        )}
+                        {finished && homeWon && <span class="text-[10px] text-gold block">GANADOR</span>}
+                      </div>
+
+                      {/* Marcador */}
+                      <div class="flex-shrink-0 text-center min-w-[72px] space-y-0.5">
+                        {finished ? (
+                          <>
+                            <div class={`font-display text-2xl leading-none ${isFinal ? 'text-gold' : 'text-white'}`}>
+                              {hs} – {as_}
+                            </div>
+                            {m.winner_penalties && (
+                              <div class="text-[10px] text-gold/70">
+                                pen {m.home_pen}–{m.away_pen}
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <span class={`font-display text-xl ${isLate ? 'text-gold/30' : 'text-brand-600'}`}>vs</span>
+                        )}
+                      </div>
+
+                      {/* Visitante */}
+                      <div class="flex-1 text-left min-w-0 space-y-0.5">
+                        {isTBDAway ? (
+                          <span class="text-xs text-slate-600 italic block">Por definir</span>
+                        ) : (
+                          <div class={`flex items-center gap-1.5 ${
+                            finished ? (awayWon ? 'text-white' : 'text-slate-500') : 'text-slate-200'
+                          }`}>
+                            {flagUrl(m.away_team, '20x15') && <img src={flagUrl(m.away_team, '20x15')!} width="20" height="15" class="flex-shrink-0 rounded-sm" loading="lazy" />}
+                            <span class="text-sm font-semibold truncate">{m.away_team}</span>
+                          </div>
+                        )}
+                        {finished && awayWon && <span class="text-[10px] text-gold block text-right">GANADOR</span>}
+                      </div>
+
+                    </div>
+
+                  </div>
+                );
+              })}
+            </div>
+
+          </div>
+        );
+      })}
+    </div>
+
+  </div>
+</Layout>
+
+<script is:inline>
+  function switchTab(tab) {
+    const grupos        = document.getElementById('tab-grupos');
+    const eliminatorias = document.getElementById('tab-eliminatorias');
+    const btnG          = document.getElementById('tab-btn-grupos');
+    const btnE          = document.getElementById('tab-btn-eliminatorias');
+    if (!grupos || !eliminatorias || !btnG || !btnE) return;
+
+    const activeClass   = ['bg-brand-700', 'text-white'];
+    const inactiveClass = ['text-slate-400', 'hover:text-white'];
+
+    if (tab === 'grupos') {
+      grupos.classList.remove('hidden');
+      eliminatorias.classList.add('hidden');
+      btnG.classList.add(...activeClass);    btnG.classList.remove(...inactiveClass);
+      btnE.classList.remove(...activeClass); btnE.classList.add(...inactiveClass);
+    } else {
+      eliminatorias.classList.remove('hidden');
+      grupos.classList.add('hidden');
+      btnE.classList.add(...activeClass);    btnE.classList.remove(...inactiveClass);
+      btnG.classList.remove(...activeClass); btnG.classList.add(...inactiveClass);
+    }
+    localStorage.setItem('grupos-tab', tab);
+  }
+
+  // Restaurar tab activo
+  const saved = localStorage.getItem('grupos-tab') ?? 'grupos';
+  switchTab(saved);
+</script>

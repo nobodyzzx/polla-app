@@ -1,0 +1,173 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import { supabaseAdmin } from '@/lib/supabase';
+import { BETA_OFFSET_MS } from '@/lib/betaTime';
+
+// Redirect if already logged in
+const accessToken = Astro.cookies.get('sb-access-token')?.value;
+if (accessToken) return Astro.redirect('/dashboard');
+
+// Stats dinámicas
+const { count: numJugadores } = await supabaseAdmin
+  .from('profiles')
+  .select('id', { count: 'exact', head: true })
+  .eq('participa', true)
+  .eq('expulsado', false);
+
+const totalJugadores = numJugadores ?? 0;
+const pozo = totalJugadores * 100;
+---
+
+<Layout title="Bienvenido">
+
+  <!-- Background full-page -->
+  <div class="fixed inset-0 bg-cover bg-center bg-no-repeat -z-10" style="background-image: url('/bg-login.jpg')"></div>
+  <div class="fixed inset-0 bg-brand-950/82 -z-10"></div>
+
+  <!-- Hero -->
+  <div class="text-center pt-8 pb-10 sm:pt-12 sm:pb-14 space-y-7">
+
+    <!-- FIFA logo -->
+    <img src="/logo-fifa2026.png" alt="FIFA World Cup 2026" class="h-28 sm:h-36 mx-auto object-contain drop-shadow-2xl" />
+
+    <!-- Title -->
+    <div class="space-y-1">
+      <h1 class="font-display text-4xl sm:text-6xl text-white tracking-wide leading-none drop-shadow-lg">
+        POLLA MUNDIAL
+      </h1>
+      <p class="text-slate-400 text-sm sm:text-base">11 jun – 19 jul 2026 &middot; 48 selecciones &middot; 104 partidos</p>
+    </div>
+
+    <!-- Host countries — tres banderas iguales -->
+    <div class="flex items-center justify-center gap-6 sm:gap-10">
+      <div class="flex flex-col items-center gap-2">
+        <img src="https://flagcdn.com/w80/us.png" width="80" height="53" alt="Estados Unidos" class="rounded shadow-lg shadow-black/40" />
+        <span class="text-xs text-slate-400">Estados Unidos</span>
+      </div>
+      <div class="flex flex-col items-center gap-2">
+        <img src="https://flagcdn.com/w80/ca.png" width="80" height="53" alt="Canadá" class="rounded shadow-lg shadow-black/40" />
+        <span class="text-xs text-slate-400">Canadá</span>
+      </div>
+      <div class="flex flex-col items-center gap-2">
+        <img src="https://flagcdn.com/w80/mx.png" width="80" height="53" alt="México" class="rounded shadow-lg shadow-black/40" />
+        <span class="text-xs text-slate-400">México</span>
+      </div>
+    </div>
+
+    <!-- Countdown -->
+    <div class="inline-flex flex-col items-center gap-1">
+      <p class="text-xs text-slate-500 uppercase tracking-widest">Faltan para el Mundial</p>
+      <div id="countdown" class="flex items-end gap-3 sm:gap-5">
+        <div class="flex flex-col items-center">
+          <span id="cd-days" class="font-display text-4xl sm:text-5xl text-gold leading-none">--</span>
+          <span class="text-xs text-slate-500 mt-1">días</span>
+        </div>
+        <span class="font-display text-3xl text-brand-700 pb-1">:</span>
+        <div class="flex flex-col items-center">
+          <span id="cd-hours" class="font-display text-4xl sm:text-5xl text-gold leading-none">--</span>
+          <span class="text-xs text-slate-500 mt-1">horas</span>
+        </div>
+        <span class="font-display text-3xl text-brand-700 pb-1">:</span>
+        <div class="flex flex-col items-center">
+          <span id="cd-mins" class="font-display text-4xl sm:text-5xl text-gold leading-none">--</span>
+          <span class="text-xs text-slate-500 mt-1">min</span>
+        </div>
+        <span class="font-display text-3xl text-brand-700 pb-1">:</span>
+        <div class="flex flex-col items-center">
+          <span id="cd-secs" class="font-display text-4xl sm:text-5xl text-white leading-none">--</span>
+          <span class="text-xs text-slate-500 mt-1">seg</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- CTAs -->
+    <div class="flex flex-col gap-3 justify-center sm:flex-row pt-2">
+      <a href="/login"
+        class="bg-gold text-brand-950 font-bold px-8 py-4 rounded-xl transition active:bg-gold-dark text-base min-h-[56px] flex items-center justify-center shadow-lg shadow-gold/20">
+        Entrar a la Polla
+      </a>
+      <a href="/reglas"
+        class="border border-brand-700 text-slate-300 px-8 py-4 rounded-xl transition text-base active:border-gold active:text-gold min-h-[56px] flex items-center justify-center">
+        Ver Reglamento
+      </a>
+    </div>
+  </div>
+
+  <!-- Stats dinámicas -->
+  <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-12">
+    {[
+      { icon: '👥', label: 'Participantes',   value: totalJugadores.toString() },
+      { icon: '💰', label: 'Pozo acumulado',  value: `${pozo} Bs` },
+      { icon: '⚽', label: 'Partidos',         value: '104'  },
+      { icon: '🎟️', label: 'Inscripción',       value: '120 Bs' },
+    ].map(({ icon, label, value }) => (
+      <div class="bg-brand-900/70 backdrop-blur-sm border border-brand-700/60 rounded-2xl p-5 text-center hover:border-gold/40 transition">
+        <div class="text-2xl mb-2">{icon}</div>
+        <div class="text-2xl sm:text-3xl font-display text-gold">{value}</div>
+        <div class="text-xs text-slate-500 mt-1">{label}</div>
+      </div>
+    ))}
+  </div>
+
+  <!-- Cómo funciona -->
+  <div class="mb-12">
+    <h2 class="text-center text-xs uppercase tracking-widest text-slate-500 mb-6">Cómo funciona</h2>
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      {[
+        {
+          step: '01',
+          icon: '📝',
+          title: 'Pronostica',
+          desc: 'Antes de cada partido ingresa tu predicción de marcador. Cuanto más exacto, más puntos.',
+        },
+        {
+          step: '02',
+          icon: '⭐',
+          title: 'Acumula puntos',
+          desc: 'Ganas puntos por resultado correcto, marcador exacto, y penales. Hay bonus por jornada perfecta.',
+        },
+        {
+          step: '03',
+          icon: '🏆',
+          title: 'Un solo campeón',
+          desc: `El jugador con más puntos al final se lleva TODO el pozo.`,
+        },
+      ].map(({ step, icon, title, desc }) => (
+        <div class="bg-brand-900/70 backdrop-blur-sm border border-brand-700/50 rounded-2xl p-6 relative overflow-hidden group hover:border-gold/40 transition">
+          <span class="absolute top-4 right-5 font-display text-5xl text-brand-800 select-none group-hover:text-brand-700 transition leading-none">{step}</span>
+          <div class="text-3xl mb-3">{icon}</div>
+          <h3 class="font-bold text-white text-base mb-2">{title}</h3>
+          <p class="text-slate-400 text-sm leading-relaxed">{desc}</p>
+        </div>
+      ))}
+    </div>
+  </div>
+
+</Layout>
+
+<script define:vars={{ BETA_OFFSET_MS }}>
+  (function tick() {
+    var target = new Date('2026-06-11T18:00:00Z').getTime();
+    function update() {
+      var now = Date.now() + BETA_OFFSET_MS;
+      var diff = target - now;
+      if (diff <= 0) {
+        document.getElementById('cd-days').textContent = '0';
+        document.getElementById('cd-hours').textContent = '00';
+        document.getElementById('cd-mins').textContent = '00';
+        document.getElementById('cd-secs').textContent = '00';
+        return;
+      }
+      var days  = Math.floor(diff / 86400000);
+      var hours = Math.floor((diff % 86400000) / 3600000);
+      var mins  = Math.floor((diff % 3600000)  / 60000);
+      var secs  = Math.floor((diff % 60000)    / 1000);
+      document.getElementById('cd-days').textContent  = days;
+      document.getElementById('cd-hours').textContent = String(hours).padStart(2,'0');
+      document.getElementById('cd-mins').textContent  = String(mins).padStart(2,'0');
+      document.getElementById('cd-secs').textContent  = String(secs).padStart(2,'0');
+    }
+    update();
+    setInterval(update, 1000);
+  })();
+</script>

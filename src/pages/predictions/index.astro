@@ -1,0 +1,545 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import { supabase } from '@/lib/supabase';
+import { betaNowMs } from '@/lib/betaTime';
+
+const accessToken = Astro.cookies.get('sb-access-token')?.value;
+const refreshToken = Astro.cookies.get('sb-refresh-token')?.value;
+if (!accessToken || !refreshToken) { Astro.cookies.delete("sb-access-token", { path: "/" }); Astro.cookies.delete("sb-refresh-token", { path: "/" }); return Astro.redirect("/login"); }
+
+const { data: { user } } = await supabase.auth.setSession({
+  access_token: accessToken,
+  refresh_token: refreshToken,
+});
+if (!user) { Astro.cookies.delete("sb-access-token", { path: "/" }); Astro.cookies.delete("sb-refresh-token", { path: "/" }); return Astro.redirect("/login"); }
+
+const [
+  { data: matches },
+  { data: navProfile },
+  { data: myPredictions },
+] = await Promise.all([
+  supabase.from('matches').select('*').eq('is_finished', false).not('home_team', 'ilike', 'TBD%').not('away_team', 'ilike', 'TBD%').not('home_team', 'ilike', 'Winner%').not('away_team', 'ilike', 'Winner%').order('match_date', { ascending: true }),
+  supabase.from('profiles').select('username, puntos_totales, es_referi, pago_70, pago_50').eq('id', user.id).single(),
+  supabase.from('predictions').select('match_id, user_home, user_away, user_home_pen, user_away_pen, user_winner_penalties').eq('user_id', user.id),
+]);
+
+const predMap = new Map(myPredictions?.map(p => [p.match_id, p]) ?? []);
+
+function formatDate(dateStr: string): string {
+  return new Date(dateStr).toLocaleString('es-BO', {
+    weekday: 'short', day: 'numeric', month: 'short',
+    hour: '2-digit', minute: '2-digit',
+    timeZone: 'America/La_Paz',
+  });
+}
+
+// Mapa de codigos ISO — emojis generados en cliente
+// Incluye nombres en español E inglés (football-data.org devuelve en inglés)
+const ISO_CODES: Record<string, string> = {
+  // ── América ──
+  'Mexico':'MX','Ecuador':'EC','Panama':'PA','Canada':'CA',
+  'Jamaica':'JM','Argentina':'AR','Bolivia':'BO','Brasil':'BR',
+  'Brazil':'BR','Uruguay':'UY','Colombia':'CO','Peru':'PE',
+  'Paraguay':'PY','Haiti':'HT','Curazao':'CW','Curacao':'CW','Surinam':'SR',
+  'Venezuela':'VE','Chile':'CL','Costa Rica':'CR','Honduras':'HN',
+  'El Salvador':'SV','Guatemala':'GT','Trinidad and Tobago':'TT',
+  'Cuba':'CU','Nicaragua':'NI','Bermuda':'BM','Barbados':'BB',
+  'United States':'US','Estados Unidos':'US',
+  // ── Europa ──
+  'Alemania':'DE','Germany':'DE','Francia':'FR','France':'FR',
+  'Espana':'ES','Spain':'ES','Portugal':'PT','Croacia':'HR',
+  'Croatia':'HR','Belgica':'BE','Belgium':'BE','Paises Bajos':'NL',
+  'Netherlands':'NL','Suiza':'CH','Switzerland':'CH','Austria':'AT',
+  'Polonia':'PL','Poland':'PL','Dinamarca':'DK','Denmark':'DK',
+  'Suecia':'SE','Sweden':'SE','Noruega':'NO','Norway':'NO',
+  'Escocia':'GB-SCT','Scotland':'GB-SCT','Inglaterra':'GB-ENG','England':'GB-ENG',
+  'Gales':'GB-WLS','Wales':'GB-WLS','Rep. de Irlanda':'IE','Ireland':'IE',
+  'Italia':'IT','Italy':'IT','Ucrania':'UA','Ukraine':'UA',
+  'Rumania':'RO','Romania':'RO','Eslovaquia':'SK','Slovakia':'SK',
+  'Albania':'AL','Turquia':'TR','Turkey':'TR','Kosovo':'XK',
+  'Macedonia del Norte':'MK','North Macedonia':'MK',
+  'Rep. Checa':'CZ','Czech Republic':'CZ','Czechia':'CZ',
+  'Serbia':'RS','Hungria':'HU','Hungary':'HU','Eslovenia':'SI','Slovenia':'SI',
+  'Grecia':'GR','Greece':'GR','Finlandia':'FI','Finland':'FI',
+  'Bosnia and Herzegovina':'BA','Bosnia':'BA','Georgia':'GE',
+  // ── África ──
+  'Senegal':'SN','Marruecos':'MA','Morocco':'MA','Ghana':'GH',
+  'Sudafrica':'ZA','South Africa':'ZA','Argelia':'DZ','Algeria':'DZ',
+  'Egipto':'EG','Egypt':'EG','Tunez':'TN','Tunisia':'TN',
+  'Nigeria':'NG','Camerun':'CM','Cameroon':'CM','Costa de Marfil':'CI',
+  'Ivory Coast':'CI',"Cote d'Ivoire":'CI','Cabo Verde':'CV','Cape Verde':'CV','Cape Verde Islands':'CV',
+  'Congo DR':'CD','DR Congo':'CD','Mali':'ML','Burkina Faso':'BF',
+  'Guinea':'GN','Zimbabwe':'ZW','Tanzania':'TZ','Zambia':'ZM',
+  'Uganda':'UG','Kenya':'KE','Ethiopia':'ET','Rwanda':'RW',
+  'Angola':'AO','Mozambique':'MZ','Namibia':'NA','Benin':'BJ',
+  // ── Asia ──
+  'Japon':'JP','Japan':'JP','Corea del Sur':'KR','South Korea':'KR',
+  'Australia':'AU','Iran':'IR','Arabia Saudita':'SA','Saudi Arabia':'SA',
+  'Catar':'QA','Qatar':'QA','Jordania':'JO','Jordan':'JO',
+  'Uzbekistan':'UZ','Iraq':'IQ','China':'CN','India':'IN',
+  'Vietnam':'VN','Thailand':'TH','Indonesia':'ID','Philippines':'PH',
+  'Filipinas':'PH','Bahrain':'BH','Kuwait':'KW','Oman':'OM',
+  'United Arab Emirates':'AE','Emiratos Arabes Unidos':'AE',
+  // ── Oceanía ──
+  'Nueva Zelanda':'NZ','New Zealand':'NZ','Nueva Caledonia':'NC','New Caledonia':'NC',
+  'Fiji':'FJ','Papua New Guinea':'PG',
+};
+
+function normalize(s: string): string {
+  return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+type MatchRow = {
+  id: string;
+  home_team: string;
+  away_team: string;
+  match_date: string;
+  stage: string;
+  group_name: string | null;
+  round: string | null;
+  jornada: string | null;
+};
+
+// Agrupar por día Bolivia (UTC-4) — cada día es su propia unidad de pronóstico.
+// El cierre es 2h antes del primer partido de ESE DÍA (no de la jornada completa).
+const grouped = new Map<string, MatchRow[]>();
+for (const m of (matches ?? []) as MatchRow[]) {
+  const key = new Date(m.match_date).toLocaleDateString('es-BO', {
+    weekday: 'long', day: 'numeric', month: 'long',
+    timeZone: 'America/La_Paz',
+  });
+  if (!grouped.has(key)) grouped.set(key, []);
+  grouped.get(key)!.push(m);
+}
+
+function isJornadaClosed(jornadaMatches: MatchRow[]): boolean {
+  const firstTime = Math.min(...jornadaMatches.map(m => new Date(m.match_date).getTime()));
+  return firstTime - betaNowMs() < 2 * 3600 * 1000;
+}
+
+function buildShareData(dayMatches: MatchRow[], username: string) {
+  const firstMatch = dayMatches[0];
+  const cutoff = new Date(new Date(firstMatch.match_date).getTime() - 2 * 3600 * 1000);
+  const cutoffStr = cutoff.toLocaleString('es-BO', { hour: '2-digit', minute: '2-digit' });
+  const items = dayMatches
+    .filter(m => predMap.has(m.id))
+    .map(m => {
+      const pred = predMap.get(m.id)!;
+      return {
+        home: m.home_team, away: m.away_team,
+        homeISO: ISO_CODES[normalize(m.home_team)] ?? '',
+        awayISO: ISO_CODES[normalize(m.away_team)] ?? '',
+        uh: pred.user_home, ua: pred.user_away,
+        pen: pred.user_winner_penalties ?? null,
+      };
+    });
+  return JSON.stringify({ username, cutoff: cutoffStr, items });
+}
+
+const errorParam = Astro.url.searchParams.get('error');
+const infoParam  = Astro.url.searchParams.get('info');
+const okParam    = Astro.url.searchParams.get('ok');
+
+// Contador global de inputs — evita colisiones de nombre entre jornadas distintas
+let globalFormIdx = 0;
+---
+
+<Layout title="Pronósticos" navProfile={navProfile} isAuthed={true}>
+  <div class="space-y-6">
+
+    <div class="flex items-center justify-between gap-2">
+      <h1 class="font-display text-4xl text-white tracking-wide">MIS PRONÓSTICOS</h1>
+      <a href="/reglas" class="text-xs text-slate-500 active:text-gold transition py-2 px-1">Reglamento →</a>
+    </div>
+
+    {import.meta.env.PUBLIC_BETA !== "true" && !(navProfile?.pago_70 && navProfile?.pago_50) && (
+      <div class="bg-brand-900 border border-amber-500/40 rounded-2xl p-8 text-center space-y-3">
+        <div class="text-4xl">🔒</div>
+        <h2 class="text-white font-bold text-lg">Pronósticos bloqueados</h2>
+        <p class="text-slate-400 text-sm max-w-sm mx-auto">
+          Para participar debés tener los dos pagos confirmados: <strong class="text-amber-400">70 Bs + 50 Bs</strong>.
+          Una vez confirmado por el Réferi, se habilitarán tus pronósticos.
+        </p>
+        <p class="text-xs text-slate-600 mt-2">¿Ya pagaste? Contactá al Réferi Harold.</p>
+      </div>
+    )}
+
+    {errorParam === 'cerrado' && (
+      <div class="bg-fifared/15 border border-fifared/40 rounded-xl px-4 py-3 text-sm text-red-300 text-center">
+        🔒 La jornada ya está cerrada.
+      </div>
+    )}
+    {errorParam === 'incompleto' && (
+      <div class="bg-fifared/15 border border-fifared/40 rounded-xl px-4 py-3 text-sm text-red-300 text-center">
+        ⚠️ Completa el marcador de todos los partidos antes de enviar.
+      </div>
+    )}
+    {errorParam && errorParam !== 'cerrado' && errorParam !== 'incompleto' && (
+      <div class="bg-fifared/15 border border-fifared/40 rounded-xl px-4 py-3 text-sm text-red-300 text-center">
+        {decodeURIComponent(errorParam)}
+      </div>
+    )}
+    {infoParam === 'ya_pronosticado' && (
+      <div class="bg-brand-700/40 border border-brand-600 rounded-xl px-4 py-3 text-sm text-slate-300 text-center">
+        Ya registraste pronósticos para esa jornada.
+      </div>
+    )}
+    {okParam && (
+      <div class="bg-gol/10 border border-gol/30 rounded-xl px-4 py-3 text-sm text-green-300 text-center">
+        ✅ Pronósticos enviados correctamente.
+      </div>
+    )}
+
+    {(import.meta.env.PUBLIC_BETA === 'true' || (navProfile?.pago_70 && navProfile?.pago_50)) && grouped.size === 0 && (
+      <div class="text-center py-20 text-slate-600">
+        <div class="text-5xl mb-4">📅</div>
+        <p class="text-base">No hay partidos disponibles por el momento.</p>
+      </div>
+    )}
+
+    {(import.meta.env.PUBLIC_BETA === 'true' || (navProfile?.pago_70 && navProfile?.pago_50)) && [...grouped.entries()].map(([jornadaKey, jornadaMatches]) => {
+      const closed = isJornadaClosed(jornadaMatches);
+      const predCount = jornadaMatches.filter(m => predMap.has(m.id)).length;
+      const allDone = predCount === jornadaMatches.length;
+      const hasSome = predCount > 0;
+      const unpredicted = jornadaMatches.filter(m => !predMap.has(m.id));
+      const firstTime = Math.min(...jornadaMatches.map(m => new Date(m.match_date).getTime()));
+      const cutoffStr = new Date(firstTime - 2 * 3600 * 1000).toLocaleString('es-BO', {
+        weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+        timeZone: 'America/La_Paz',
+      });
+      const shareData = buildShareData(jornadaMatches, navProfile?.username ?? 'yo');
+
+      return (
+        <div class="space-y-3">
+
+          {/* ── Encabezado de jornada ── */}
+          <div class={`flex items-center justify-between px-4 py-3 rounded-xl border ${
+            closed ? 'bg-fifared/8 border-fifared/30' :
+            allDone ? 'bg-gol/8 border-gol/30' :
+            'bg-brand-800/60 border-brand-700/60'
+          }`}>
+            <div>
+              <h2 class="font-display text-xl text-white tracking-wide capitalize">{jornadaKey}</h2>
+              <p class={`text-xs mt-0.5 ${closed ? 'text-fifared' : 'text-slate-500'}`}>
+                {closed
+                  ? '🔒 Cerrada'
+                  : `⏰ Cierre: ${cutoffStr}`
+                }
+              </p>
+            </div>
+            <div class="flex items-center gap-2 flex-shrink-0">
+              <span class={`text-xs px-2 py-1 rounded-full border ${
+                allDone ? 'text-gol border-gol/30 bg-gol/10' :
+                hasSome ? 'text-amarilla border-amarilla/30 bg-amarilla/10' :
+                closed  ? 'text-fifared border-fifared/30 bg-fifared/10' :
+                          'text-slate-500 border-brand-600 bg-brand-700/30'
+              }`}>
+                {allDone ? '✅ Completa' : hasSome ? `${predCount}/${jornadaMatches.length}` : closed ? 'Sin pronóstico' : `0/${jornadaMatches.length}`}
+              </span>
+              {hasSome && (
+                <button
+                  class="share-btn flex items-center gap-1.5 text-xs font-semibold text-white px-3 py-2 rounded-xl transition active:opacity-80 min-h-[36px]"
+                  style="background-color:#25D366"
+                  data-share={shareData}>
+                  <svg viewBox="0 0 24 24" class="w-4 h-4 flex-shrink-0" fill="currentColor" aria-hidden="true">
+                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                  </svg>
+                  <span>Compartir</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* ── Si la jornada está abierta y hay partidos sin pronosticar: form inline ── */}
+          {!closed && !allDone ? (
+            <form method="POST" action="/api/predictions/submit-jornada" class="space-y-2">
+
+              {jornadaMatches.map((m) => {
+                const existing = predMap.get(m.id);
+                const homeISO = ISO_CODES[normalize(m.home_team)] ?? '';
+                const awayISO = ISO_CODES[normalize(m.away_team)] ?? '';
+                const idx = existing ? -1 : globalFormIdx++;
+                const isKnockout = m.stage === 'knockout';
+
+                return (
+                  <div class={`bg-brand-900 border rounded-2xl p-4 ${existing ? 'border-gol/30 bg-gol/5' : 'border-brand-700/60'}`}>
+
+                    {/* Fecha + etiqueta */}
+                    <div class="flex items-center justify-between mb-3 text-xs">
+                      <span class="text-slate-500">
+                        {m.stage === 'group' ? (m.group_name ? `Grupo ${m.group_name}` : m.jornada) : m.round}
+                      </span>
+                      <span class="text-slate-400">{formatDate(m.match_date)}</span>
+                    </div>
+
+                    {/* Equipos + inputs */}
+                    <div class="flex items-center gap-2">
+
+                      {/* Local */}
+                      <div class="flex-1 flex flex-col items-end gap-1 min-w-0">
+                        <span class="text-white font-semibold text-sm text-right leading-tight">
+                          {m.home_team}
+                          {homeISO && <span class="flag-emoji ml-1" data-iso={homeISO}></span>}
+                        </span>
+                        {existing ? (
+                          <span class="text-gol font-display text-3xl">{existing.user_home}</span>
+                        ) : (
+                          <>
+                            <input type="hidden" name={`matchId_${idx}`} value={m.id} />
+                            <input
+                              type="number"
+                              name={`home_${idx}`}
+                              min="0" max="20" required placeholder="0"
+                              class="w-16 bg-brand-800 border-2 border-brand-700 rounded-xl py-3 text-white text-2xl font-display text-center focus:outline-none focus:border-gold transition"
+                            />
+                          </>
+                        )}
+                      </div>
+
+                      {/* Separador */}
+                      <div class="text-brand-600 font-bold text-xl flex-shrink-0 pb-0.5">–</div>
+
+                      {/* Visitante */}
+                      <div class="flex-1 flex flex-col items-start gap-1 min-w-0">
+                        <span class="text-white font-semibold text-sm leading-tight">
+                          {awayISO && <span class="flag-emoji mr-1" data-iso={awayISO}></span>}
+                          {m.away_team}
+                        </span>
+                        {existing ? (
+                          <span class="text-gol font-display text-3xl">{existing.user_away}</span>
+                        ) : (
+                          <input
+                            type="number"
+                            name={`away_${idx}`}
+                            min="0" max="20" required placeholder="0"
+                            class="w-16 bg-brand-800 border-2 border-brand-700 rounded-xl py-3 text-white text-2xl font-display text-center focus:outline-none focus:border-gold transition"
+                          />
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Penales (knockout sin pronóstico) */}
+                    {isKnockout && !existing && (
+                      <div
+                        class="hidden mt-3 pt-3 border-t border-brand-800 space-y-2"
+                        data-pen-section={`pen-section-${idx}`}
+                      >
+                        <p class="text-xs text-gold text-center font-semibold">⚡ Score en penales <span class="text-slate-500 font-normal">(solo si hay empate)</span></p>
+                        <div class="flex items-center gap-2">
+                          <div class="flex-1 text-center space-y-1">
+                            <span class="text-xs text-slate-500 block truncate">{m.home_team}</span>
+                            <input
+                              type="number"
+                              name={`pen_home_${idx}`}
+                              min="0" max="20" placeholder="0"
+                              class="w-full bg-gold/10 border-2 border-gold/40 rounded-xl py-3 text-gold text-2xl font-display text-center focus:outline-none focus:border-gold transition placeholder:text-gold/30"
+                              data-pen-input={`pen-section-${idx}`}
+                            />
+                          </div>
+                          <span class="text-gold/40 font-bold text-xl flex-shrink-0">–</span>
+                          <div class="flex-1 text-center space-y-1">
+                            <span class="text-xs text-slate-500 block truncate">{m.away_team}</span>
+                            <input
+                              type="number"
+                              name={`pen_away_${idx}`}
+                              min="0" max="20" placeholder="0"
+                              class="w-full bg-gold/10 border-2 border-gold/40 rounded-xl py-3 text-gold text-2xl font-display text-center focus:outline-none focus:border-gold transition placeholder:text-gold/30"
+                              data-pen-input={`pen-section-${idx}`}
+                            />
+                          </div>
+                        </div>
+                        <p class="text-xs text-slate-600 text-center">El ganador en penales se determina automáticamente</p>
+                      </div>
+                    )}
+
+                    {/* Ya pronosticado: mostrar score de penales si aplica */}
+                    {existing && (existing.user_home_pen !== null || existing.user_winner_penalties) && (
+                      <p class="text-xs text-slate-500 text-center mt-2">
+                        Penales: <span class="text-gold">
+                          {existing.user_home_pen !== null
+                            ? `${existing.user_home_pen} – ${existing.user_away_pen}`
+                            : existing.user_winner_penalties === 'home' ? m.home_team : m.away_team
+                          }
+                        </span>
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+
+              <button type="submit"
+                class="w-full bg-gold text-brand-950 font-bold py-4 rounded-2xl transition active:bg-gold-dark text-base min-h-[52px] mt-1">
+                Enviar pronósticos de la jornada ✅
+              </button>
+              <p class="text-xs text-slate-600 text-center pb-1">
+                Tolerancia Cero — una vez enviado no se puede modificar.
+              </p>
+            </form>
+
+          ) : (
+            /* ── Jornada cerrada o completa: solo lectura ── */
+            <div class="space-y-2">
+              {jornadaMatches.map((m) => {
+                const existing = predMap.get(m.id);
+                const homeISO = ISO_CODES[normalize(m.home_team)] ?? '';
+                const awayISO = ISO_CODES[normalize(m.away_team)] ?? '';
+                return (
+                  <div class={`bg-brand-900 border rounded-2xl p-4 ${existing ? 'border-gol/30 bg-gol/5' : 'border-fifared/30 bg-fifared/5'}`}>
+                    <div class="flex items-center justify-between mb-2 text-xs">
+                      <span class="text-slate-500">
+                        {m.stage === 'group' ? (m.group_name ? `Grupo ${m.group_name}` : m.jornada) : m.round}
+                      </span>
+                      <span class="text-slate-400">{formatDate(m.match_date)}</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <div class="flex-1 text-right">
+                        <span class="text-white font-semibold text-sm">
+                          {m.home_team}
+                          {homeISO && <span class="flag-emoji ml-1" data-iso={homeISO}></span>}
+                        </span>
+                      </div>
+                      <div class="flex-shrink-0 px-2 text-center min-w-[60px]">
+                        {existing
+                          ? <span class="text-gol font-display text-2xl">{existing.user_home}–{existing.user_away}</span>
+                          : <span class="text-slate-700 text-sm">–</span>
+                        }
+                      </div>
+                      <div class="flex-1">
+                        <span class="text-white font-semibold text-sm">
+                          {awayISO && <span class="flag-emoji mr-1" data-iso={awayISO}></span>}
+                          {m.away_team}
+                        </span>
+                      </div>
+                    </div>
+                    {existing && (existing.user_home_pen !== null || existing.user_winner_penalties) && (
+                      <p class="text-xs text-slate-500 text-center mt-1.5">
+                        Penales: <span class="text-gold">
+                          {existing.user_home_pen !== null
+                            ? `${existing.user_home_pen} – ${existing.user_away_pen}`
+                            : existing.user_winner_penalties === 'home' ? m.home_team : m.away_team
+                          }
+                        </span>
+                      </p>
+                    )}
+                    {!existing && (
+                      <p class="text-xs text-slate-700 text-center mt-2">Sin pronóstico</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+        </div>
+      );
+    })}
+  </div>
+</Layout>
+
+<script>
+  // Generar emojis de bandera en runtime
+  function flagFromISO(cc: string): string {
+    const base = 0x1F1E6 - 65;
+    return String.fromCodePoint(cc.charCodeAt(0) + base, cc.charCodeAt(1) + base);
+  }
+
+  function initFlags() {
+    document.querySelectorAll<HTMLSpanElement>('.flag-emoji').forEach(el => {
+      const iso = el.dataset.iso;
+      if (iso) el.textContent = flagFromISO(iso);
+    });
+  }
+
+  // Mostrar selector de penales en partidos de knockout cuando hay empate
+  function initPenaltySections() {
+    document.querySelectorAll<HTMLInputElement>('input[type="number"]').forEach(input => {
+      const name = input.name; // home_N o away_N
+      const match = name.match(/^(home|away)_(\d+)$/);
+      if (!match) return;
+      const idx = match[2];
+      const section = document.querySelector<HTMLElement>(`[data-pen-section="pen-section-${idx}"]`);
+      if (!section) return;
+
+      function check() {
+        const homeVal = (document.querySelector<HTMLInputElement>(`input[name="home_${idx}"]`))?.value;
+        const awayVal = (document.querySelector<HTMLInputElement>(`input[name="away_${idx}"]`))?.value;
+        const h = parseInt(homeVal ?? '');
+        const a = parseInt(awayVal ?? '');
+        if (!isNaN(h) && !isNaN(a) && h === a) {
+          section!.classList.remove('hidden');
+        } else {
+          section!.classList.add('hidden');
+          section!.querySelectorAll<HTMLInputElement>('input[type="radio"]').forEach(r => r.checked = false);
+        }
+      }
+      input.addEventListener('input', check);
+    });
+  }
+
+  // WhatsApp share
+  function buildText(data: {
+    username: string; cutoff: string;
+    items: Array<{ home: string; away: string; homeISO: string; awayISO: string; uh: number; ua: number; pen: string | null }>;
+  }) {
+    const ball = String.fromCodePoint(0x26BD);
+    const trophy = String.fromCodePoint(0x1F3C6);
+    const lines = [
+      `${ball} *Pronosticos de ${data.username}*`,
+      `*Cierre: ${data.cutoff}*`,
+      '',
+    ];
+    data.items.forEach((item, i) => {
+      const hf = item.homeISO ? flagFromISO(item.homeISO) : '';
+      const af = item.awayISO ? flagFromISO(item.awayISO) : '';
+      lines.push(`*Partido ${i + 1}*`);
+      lines.push(`${hf} ${item.home} (${item.uh}) vs (${item.ua}) ${item.away} ${af}`.trim());
+      if (item.pen) {
+        const winner = item.pen === 'home' ? item.home : item.away;
+        lines.push(`*Penales: ${item.pen === 'home' ? hf : af} ${winner}*`.trim());
+      }
+      lines.push('');
+    });
+    lines.push(`_Polla Mundial 2026_ ${trophy}`);
+    return lines.join('\n');
+  }
+
+  function initShareButtons() {
+    document.querySelectorAll<HTMLButtonElement>('.share-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const data = JSON.parse(btn.dataset.share ?? '{}');
+        window.open(`https://wa.me/?text=${encodeURIComponent(buildText(data))}`, '_blank');
+      });
+    });
+  }
+
+  function initSubmitButtons() {
+    document.querySelectorAll<HTMLFormElement>('form[action="/api/predictions/submit-jornada"]').forEach(form => {
+      form.addEventListener('submit', () => {
+        // Botón: feedback inmediato
+        const btn = form.querySelector<HTMLButtonElement>('button[type="submit"]');
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = '✅ Enviando…';
+          btn.classList.remove('bg-gold', 'active:bg-gold-dark');
+          btn.classList.add('bg-gol', 'opacity-80', 'cursor-not-allowed');
+        }
+        // Cards de partidos: borde + fondo verde
+        form.querySelectorAll<HTMLElement>('div.bg-brand-900').forEach(card => {
+          card.classList.remove('border-brand-700\\/60');
+          card.classList.add('border-gol/40', 'bg-gol/5');
+        });
+      });
+    });
+  }
+
+  function init() {
+    initFlags();
+    initPenaltySections();
+    initShareButtons();
+    initSubmitButtons();
+  }
+
+  init();
+  document.addEventListener('astro:page-load', init);
+</script>

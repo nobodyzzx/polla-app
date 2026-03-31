@@ -1,0 +1,341 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import { supabase, supabaseAdmin } from '@/lib/supabase';
+
+const accessToken = Astro.cookies.get('sb-access-token')?.value;
+const refreshToken = Astro.cookies.get('sb-refresh-token')?.value;
+if (!accessToken || !refreshToken) { Astro.cookies.delete("sb-access-token", { path: "/" }); Astro.cookies.delete("sb-refresh-token", { path: "/" }); return Astro.redirect("/login"); }
+
+const { data: { user } } = await supabase.auth.setSession({
+  access_token: accessToken,
+  refresh_token: refreshToken,
+});
+if (!user) { Astro.cookies.delete("sb-access-token", { path: "/" }); Astro.cookies.delete("sb-refresh-token", { path: "/" }); return Astro.redirect("/login"); }
+
+const [
+  { data: navProfile },
+  { data: rawMatches },
+  { data: rawPlayers },
+] = await Promise.all([
+  supabase.from('profiles').select('username, puntos_totales, es_referi').eq('id', user.id).single(),
+  supabaseAdmin.from('matches').select('id, home_team, away_team, home_score, away_score, home_pen, away_pen, winner_penalties, stage, group_name, round, jornada, match_date').eq('is_finished', true).order('match_date', { ascending: true }),
+  supabaseAdmin.from('profiles').select('id, username, puntos_totales, expulsado').eq('participa', true).order('puntos_totales', { ascending: false }),
+]);
+
+const finishedMatches = rawMatches ?? [];
+const players = rawPlayers ?? [];
+
+// Pronósticos
+const finishedIds = finishedMatches.map((m: any) => m.id);
+const rawPreds = finishedIds.length
+  ? (await supabaseAdmin
+      .from('predictions')
+      .select('user_id, match_id, user_home, user_away, user_home_pen, user_away_pen, user_winner_penalties, points_earned')
+      .in('match_id', finishedIds)
+    ).data ?? []
+  : [];
+
+// predMap: match_id → user_id → pred
+const predMap: Record<string, Record<string, any>> = {};
+for (const p of rawPreds) {
+  if (!predMap[p.match_id]) predMap[p.match_id] = {};
+  predMap[p.match_id][p.user_id] = p;
+}
+
+// Agrupar partidos por jornada (mantener orden de aparición)
+const jornadaOrder: string[] = [];
+const jornadaMatches: Record<string, any[]> = {};
+for (const m of finishedMatches) {
+  const k = (m as any).jornada ?? 'Sin jornada';
+  if (!jornadaMatches[k]) { jornadaMatches[k] = []; jornadaOrder.push(k); }
+  jornadaMatches[k].push(m);
+}
+
+function matchLabel(m: any): string {
+  if (m.stage === 'group') return m.group_name ? `Grupo ${m.group_name}` : (m.jornada ?? '');
+  return m.round ?? m.jornada ?? '';
+}
+
+// Datos para compartir (se serializan como JSON al cliente)
+const shareData = jornadaOrder.map((jornada) => ({
+  jornada,
+  matches: jornadaMatches[jornada].map((m: any) => ({
+    home: m.home_team,
+    away: m.away_team,
+    hs: m.home_score,
+    as_: m.away_score,
+    players: players.map((pl: any) => {
+      const pred = predMap[m.id]?.[pl.id];
+      return {
+        name: pl.username,
+        uh: pred?.user_home ?? null,
+        ua: pred?.user_away ?? null,
+        pts: pred?.points_earned ?? null,
+      };
+    }),
+  })),
+}));
+
+function ptsColor(pts: number | null): string {
+  if (pts === null || pts === undefined) return 'text-slate-600';
+  if (pts >= 6) return 'text-gold';
+  if (pts >= 3) return 'text-gol';
+  if (pts >= 1) return 'text-slate-300';
+  return 'text-slate-600';
+}
+
+function predStyle(pred: any, m: any): string {
+  if (!pred) return 'text-slate-700';
+  if (pred.user_home === m.home_score && pred.user_away === m.away_score) return 'text-gold font-bold';
+  const predRes = pred.user_home > pred.user_away ? 'H' : pred.user_home < pred.user_away ? 'A' : 'E';
+  const realRes = m.home_score > m.away_score ? 'H' : m.home_score < m.away_score ? 'A' : 'E';
+  if (predRes === realRes) return 'text-gol';
+  return 'text-slate-500';
+}
+---
+
+<Layout title="Resultados" navProfile={navProfile} isAuthed={true}>
+  <div class="space-y-8">
+
+    <div class="flex items-center justify-between gap-2">
+      <h1 class="font-display text-4xl text-white tracking-wide">RESULTADOS</h1>
+      <span class="text-xs text-slate-500 bg-brand-900 border border-brand-700 px-3 py-1.5 rounded-full">
+        Pronósticos de todos
+      </span>
+    </div>
+
+    {jornadaOrder.length === 0 && (
+      <div class="text-center py-20 text-slate-600">
+        <div class="text-5xl mb-4">📋</div>
+        <p class="text-base">Aún no hay partidos terminados.</p>
+      </div>
+    )}
+
+    {jornadaOrder.map((jornada, ji) => (
+      <div class="space-y-4">
+        <div class="flex items-center gap-3">
+          <h2 class="font-display text-2xl text-white tracking-wide">{jornada.toUpperCase()}</h2>
+          <div class="flex-1 h-px bg-brand-800" />
+          <button
+            onclick={`shareJornada(${ji})`}
+            class="flex items-center gap-1.5 text-xs bg-[#25D366]/10 border border-[#25D366]/30 text-[#25D366] hover:bg-[#25D366]/20 transition px-3 py-1.5 rounded-full font-medium flex-shrink-0"
+          >
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.123.554 4.118 1.525 5.847L0 24l6.335-1.502A11.94 11.94 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.794 9.794 0 01-5.001-1.371l-.359-.214-3.723.883.939-3.63-.234-.374A9.775 9.775 0 012.182 12C2.182 6.57 6.57 2.182 12 2.182c5.43 0 9.818 4.388 9.818 9.818 0 5.43-4.388 9.818-9.818 9.818z"/></svg>
+            Compartir
+          </button>
+        </div>
+
+        {jornadaMatches[jornada].map((m: any, mi: number) => {
+          const preds = predMap[m.id] ?? {};
+          return (
+            <div class="bg-brand-900 border border-brand-700/60 rounded-2xl overflow-hidden">
+
+              <div class="px-4 py-3 bg-brand-800/60 border-b border-brand-700/60">
+                <div class="flex items-center justify-between gap-2">
+                  <span class="text-xs text-slate-500 uppercase tracking-wide">{matchLabel(m)}</span>
+                  <div class="flex items-center gap-2">
+                    <span class="text-xs text-slate-600">
+                      {new Date(m.match_date).toLocaleDateString('es-CL', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                    <button
+                      onclick={`shareMatch(${ji}, ${mi})`}
+                      class="flex items-center gap-1 text-[11px] bg-[#25D366]/10 border border-[#25D366]/30 text-[#25D366] hover:bg-[#25D366]/20 transition px-2 py-1 rounded-full font-medium"
+                      title="Compartir este partido en WhatsApp"
+                    >
+                      <svg class="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.123.554 4.118 1.525 5.847L0 24l6.335-1.502A11.94 11.94 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.794 9.794 0 01-5.001-1.371l-.359-.214-3.723.883.939-3.63-.234-.374A9.775 9.775 0 012.182 12C2.182 6.57 6.57 2.182 12 2.182c5.43 0 9.818 4.388 9.818 9.818 0 5.43-4.388 9.818-9.818 9.818z"/></svg>
+                      WA
+                    </button>
+                  </div>
+                </div>
+                <div class="flex items-center justify-center gap-3 mt-2">
+                  <span class="text-sm font-semibold text-white flex-1 text-right truncate">{m.home_team}</span>
+                  <div class="text-center min-w-[56px]">
+                    <div class="font-display text-2xl text-white leading-none">
+                      {m.home_score} – {m.away_score}
+                    </div>
+                    {m.winner_penalties && (
+                      <div class="text-xs text-gold/70 leading-none mt-0.5">
+                        {m.home_pen !== null
+                          ? `pen ${m.home_pen}–${m.away_pen}`
+                          : `pen: ${m.winner_penalties}`
+                        }
+                      </div>
+                    )}
+                  </div>
+                  <span class="text-sm font-semibold text-white flex-1 text-left truncate">{m.away_team}</span>
+                </div>
+              </div>
+
+              <div class="overflow-x-auto">
+                <table class="w-full text-xs">
+                  <thead>
+                    <tr class="border-b border-brand-800">
+                      <th class="px-3 py-2 text-left text-slate-500 font-medium">Jugador</th>
+                      <th class="px-3 py-2 text-center text-slate-500 font-medium">Pronóstico</th>
+                      <th class="px-3 py-2 text-center text-slate-500 font-medium">Pts</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {players.map((pl: any) => {
+                      const pred = preds[pl.id];
+                      return (
+                        <tr class={`border-b border-brand-800/40 last:border-0 ${pl.id === user.id ? 'bg-gold/5' : ''}`}>
+                          <td class="px-3 py-2">
+                            <div class="flex items-center gap-1.5">
+                              {pl.id === user.id && <span class="text-gold text-[10px] font-bold">TÚ</span>}
+                              <span class={`font-medium ${pl.expulsado ? 'text-slate-600 line-through' : 'text-slate-300'}`}>
+                                {pl.username}
+                              </span>
+                              {pl.expulsado && <span class="ml-0.5">🟥🟥</span>}
+                            </div>
+                          </td>
+                          <td class="px-3 py-2 text-center">
+                            {pred ? (
+                              <div>
+                                <span class={predStyle(pred, m)}>
+                                  {pred.user_home} – {pred.user_away}
+                                </span>
+                                {pred.user_winner_penalties && (
+                                  <div class="text-slate-600 text-[10px]">
+                                    {pred.user_home_pen !== null
+                                      ? `pen ${pred.user_home_pen}–${pred.user_away_pen}`
+                                      : `pen: ${pred.user_winner_penalties}`
+                                    }
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <span class="text-slate-700">—</span>
+                            )}
+                          </td>
+                          <td class="px-3 py-2 text-center">
+                            <span class={`font-bold ${ptsColor(pred?.points_earned ?? null)}`}>
+                              {pred ? (pred.points_earned ?? 0) : '—'}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+            </div>
+          );
+        })}
+
+      </div>
+    ))}
+
+    {jornadaOrder.length > 0 && (
+      <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-600 pb-4">
+        <div class="flex items-center gap-1.5">
+          <span class="text-gold font-bold">3–1</span>
+          <span>Exacto</span>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <span class="text-gol font-bold">2–0</span>
+          <span>Resultado correcto</span>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <span class="text-slate-500">1–0</span>
+          <span>Incorrecto</span>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <span class="text-slate-700">—</span>
+          <span>Sin pronóstico</span>
+        </div>
+      </div>
+    )}
+
+  </div>
+</Layout>
+
+<script type="application/json" id="resultados-data" set:html={JSON.stringify(shareData)} />
+
+<script>
+  function shareJornada(ji: number) {
+    const raw = document.getElementById('resultados-data')?.textContent ?? '[]';
+    const data: Array<{
+      jornada: string;
+      matches: Array<{
+        home: string; away: string; hs: number; as_: number;
+        players: Array<{ name: string; uh: number|null; ua: number|null; pts: number|null }>;
+      }>;
+    }> = JSON.parse(raw);
+
+    const j = data[ji];
+    if (!j) return;
+
+    let text = `⚽ *POLLA 2026 · ${j.jornada.toUpperCase()}*\n\n`;
+
+    const playerTotals: Record<string, number> = {};
+
+    for (const m of j.matches) {
+      text += `🏟 *${m.home} ${m.hs}–${m.as_} ${m.away}*\n`;
+
+      for (const pl of m.players) {
+        if (pl.uh === null || pl.ua === null) {
+          text += `➖ ${pl.name}\n`;
+        } else {
+          const isExact = pl.uh === m.hs && pl.ua === m.as_;
+          const pR = pl.uh > pl.ua ? 'H' : pl.uh < pl.ua ? 'A' : 'E';
+          const rR = m.hs  > m.as_  ? 'H' : m.hs  < m.as_  ? 'A' : 'E';
+          const icon = isExact ? '⭐' : pR === rR ? '✅' : '❌';
+          const pts = pl.pts ?? 0;
+          text += `${icon} ${pl.name} → ${pl.uh}–${pl.ua} (${pts}pts)\n`;
+          playerTotals[pl.name] = (playerTotals[pl.name] ?? 0) + pts;
+        }
+      }
+      text += '\n';
+    }
+
+    const sorted = Object.entries(playerTotals).sort(([, a], [, b]) => b - a);
+    if (sorted.length) {
+      text += `📊 *Puntos ${j.jornada}:*\n`;
+      sorted.forEach(([name, pts], i) => {
+        const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '   ';
+        text += `${medal} ${name} → ${pts}pts\n`;
+      });
+    }
+
+    window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
+  }
+
+  function shareMatch(ji: number, mi: number) {
+    const raw = document.getElementById('resultados-data')?.textContent ?? '[]';
+    const data: Array<{
+      jornada: string;
+      matches: Array<{
+        home: string; away: string; hs: number; as_: number;
+        players: Array<{ name: string; uh: number|null; ua: number|null; pts: number|null }>;
+      }>;
+    }> = JSON.parse(raw);
+
+    const m = data[ji]?.matches[mi];
+    if (!m) return;
+
+    let text = `⚽ *${m.home} ${m.hs}–${m.as_} ${m.away}*\n`;
+    text += `_${data[ji].jornada} · Polla 2026_\n\n`;
+
+    const sorted = [...m.players].sort((a, b) => (b.pts ?? 0) - (a.pts ?? 0));
+
+    for (const pl of sorted) {
+      if (pl.uh === null || pl.ua === null) {
+        text += `➖ ${pl.name}\n`;
+      } else {
+        const isExact = pl.uh === m.hs && pl.ua === m.as_;
+        const pR = pl.uh > pl.ua ? 'H' : pl.uh < pl.ua ? 'A' : 'E';
+        const rR = m.hs  > m.as_  ? 'H' : m.hs  < m.as_  ? 'A' : 'E';
+        const icon = isExact ? '⭐' : pR === rR ? '✅' : '❌';
+        text += `${icon} ${pl.name} → ${pl.uh}–${pl.ua} (${pl.pts ?? 0}pts)\n`;
+      }
+    }
+
+    window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
+  }
+
+  // Exponer globalmente (llamado desde onclick inline)
+  (window as any).shareJornada = shareJornada;
+  (window as any).shareMatch   = shareMatch;
+</script>

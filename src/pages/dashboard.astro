@@ -1,0 +1,559 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import { supabase } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase';
+import { betaNow, betaNowMs } from '@/lib/betaTime';
+
+// Auth guard
+const accessToken = Astro.cookies.get('sb-access-token')?.value;
+const refreshToken = Astro.cookies.get('sb-refresh-token')?.value;
+if (!accessToken || !refreshToken) {
+  Astro.cookies.delete('sb-access-token', { path: '/' });
+  Astro.cookies.delete('sb-refresh-token', { path: '/' });
+  return Astro.redirect('/login');
+}
+
+const { data: { user } } = await supabase.auth.setSession({
+  access_token: accessToken,
+  refresh_token: refreshToken,
+});
+if (!user) {
+  Astro.cookies.delete('sb-access-token', { path: '/' });
+  Astro.cookies.delete('sb-refresh-token', { path: '/' });
+  return Astro.redirect('/login');
+}
+
+const ahora = betaNow().toISOString();
+
+// Todas las queries en paralelo — una sola ronda de red
+const [
+  { data: standings },
+  { data: sanctions },
+  { data: proximosPartidos },
+  { data: myProfile },
+  { data: recentFinished },
+  { data: settingsRows },
+] = await Promise.all([
+  supabase.from('profiles').select('id, username, puntos_totales, pago_70, pago_50, es_referi, participa').eq('expulsado', false).eq('participa', true).order('puntos_totales', { ascending: false }),
+  supabase.from('sanctions').select('user_id, type').eq('active', true),
+  supabase.from('matches').select('*').eq('is_finished', false).gte('match_date', ahora).order('match_date', { ascending: true }).limit(6),
+  supabase.from('profiles').select('username, puntos_totales, es_referi').eq('id', user.id).single(),
+  supabase.from('matches').select('id, home_team, away_team, home_score, away_score, match_date, jornada, stage').eq('is_finished', true).order('match_date', { ascending: false }).limit(20),
+  supabaseAdmin.from('settings').select('key, value'),
+]);
+
+const sMap = new Map((settingsRows ?? []).map((r: any) => [r.key, r.value as string | null]));
+const pagosDeadline70: string = sMap.get('pagos_deadline_70') ?? '';
+const pagosDeadline50: string = sMap.get('pagos_deadline_50') ?? '';
+
+// El botón se deshabilita cuando ambos plazos hayan vencido
+const now = betaNow();
+const expired70 = pagosDeadline70 ? new Date(pagosDeadline70) < now : false;
+const expired50 = pagosDeadline50 ? new Date(pagosDeadline50) < now : false;
+const pagosExpired = expired70 && expired50;
+
+function fmtDeadline(iso: string) {
+  return new Date(iso).toLocaleString('es-BO', {
+    weekday: 'short', day: 'numeric', month: 'short',
+    hour: '2-digit', minute: '2-digit',
+    timeZone: 'America/La_Paz',
+  });
+}
+
+// Mapa userId → { yellows, reds }
+const sanctionMap = new Map<string, { yellows: number; reds: number }>();
+for (const s of sanctions ?? []) {
+  const cur = sanctionMap.get(s.user_id) ?? { yellows: 0, reds: 0 };
+  if (s.type === 'yellow') cur.yellows++;
+  else if (s.type === 'red' || s.type === 'double_red') cur.reds++;
+  sanctionMap.set(s.user_id, cur);
+}
+
+// Una sola query para los primeros partidos de TODAS las jornadas cercanas (elimina el N+1)
+const jornadasEnDashboard = [...new Set((proximosPartidos ?? []).map((m: any) => m.jornada).filter(Boolean))];
+const jornadaFirstMatchMap = new Map<string | null, number>();
+jornadaFirstMatchMap.set(null, Infinity);
+
+if (jornadasEnDashboard.length > 0) {
+  const { data: allJornadaMatches } = await supabase
+    .from('matches')
+    .select('jornada, match_date')
+    .in('jornada', jornadasEnDashboard);
+  for (const m of allJornadaMatches ?? []) {
+    const t = new Date(m.match_date).getTime();
+    const prev = jornadaFirstMatchMap.get(m.jornada) ?? Infinity;
+    jornadaFirstMatchMap.set(m.jornada, Math.min(prev, t));
+  }
+}
+
+// Prediction status for upcoming matches
+const upcomingMatchIds = (proximosPartidos ?? []).map((m: any) => m.id);
+let predictedSet = new Set<string>();
+if (upcomingMatchIds.length > 0) {
+  const { data: myPreds } = await supabase
+    .from('predictions')
+    .select('match_id')
+    .eq('user_id', user.id)
+    .in('match_id', upcomingMatchIds);
+  predictedSet = new Set((myPreds ?? []).map((p: any) => p.match_id));
+}
+
+// Última jornada terminada
+const finishedList = recentFinished ?? [];
+const lastJornadaName = finishedList.length > 0 ? finishedList[0].jornada : null;
+const lastJornadaMatches = lastJornadaName
+  ? finishedList.filter((m: any) => m.jornada === lastJornadaName)
+  : finishedList.slice(0, 6);
+
+const MEDALS = ['🥇', '🥈', '🥉'];
+
+function tiempoRestante(matchDate: string): string {
+  const diff = new Date(matchDate).getTime() - betaNowMs();
+  if (diff <= 0) return 'En curso';
+  const h = Math.floor(diff / 3600000);
+  const m = Math.floor((diff % 3600000) / 60000);
+  return `${h}h ${m}m`;
+}
+
+function cierre2h(jornada: string | null, matchDate: string): boolean {
+  const firstTime = jornada !== null
+    ? (jornadaFirstMatchMap.get(jornada) ?? new Date(matchDate).getTime())
+    : new Date(matchDate).getTime();
+  return firstTime - betaNowMs() < 2 * 3600 * 1000;
+}
+
+type StandingRow = {
+  id: string;
+  username: string;
+  puntos_totales: number;
+  pago_70: boolean;
+  pago_50: boolean;
+  es_referi: boolean;
+};
+
+const rows: StandingRow[] = standings ?? [];
+const today = betaNow().toLocaleDateString('es-BO', {
+  weekday: 'long', day: 'numeric', month: 'long',
+  timeZone: 'America/La_Paz',
+});
+
+// navProfile viene de su propia query — independiente del filtro participa
+const navProfile = myProfile ?? null;
+
+// Stats para tarjetas
+const leaderPoints = rows[0]?.puntos_totales ?? 0;
+const countPago70 = rows.filter(r => r.pago_70).length;
+const countPago50 = rows.filter(r => r.pago_70 && r.pago_50).length;
+const pozoTotal = countPago50 * 100;
+const nextMatch = (proximosPartidos ?? [])[0] ?? null;
+
+// Próximo partido — countdown
+function countdownLabel(matchDate: string): string {
+  const diff = new Date(matchDate).getTime() - betaNowMs();
+  if (diff <= 0) return 'En curso';
+  const h = Math.floor(diff / 3600000);
+  if (h < 1) {
+    const m = Math.floor(diff / 60000);
+    return `${m} min`;
+  }
+  if (h < 24) return `${h}h ${Math.floor((diff % 3600000) / 60000)}m`;
+  const d = Math.floor(h / 24);
+  const rh = h % 24;
+  return rh > 0 ? `${d}d ${rh}h` : `${d} días`;
+}
+
+// Estilos por posición
+function rowStyle(i: number, isMe: boolean) {
+  if (isMe) return 'bg-brand-700/30 border border-brand-600/60';
+  if (i === 0) return 'bg-yellow-500/10 border border-yellow-500/35';
+  if (i === 1) return 'bg-slate-400/10 border border-slate-400/30';
+  if (i === 2) return 'bg-amber-700/10 border border-amber-700/30';
+  return 'bg-brand-900 border border-brand-800/60';
+}
+function pointColor(i: number, isMe: boolean) {
+  if (isMe) return 'text-brand-400';
+  if (i === 0) return 'text-gold';
+  if (i === 1) return 'text-slate-300';
+  if (i === 2) return 'text-amber-600';
+  return 'text-white';
+}
+function accentLine(i: number, isMe: boolean) {
+  if (isMe) return 'from-transparent via-blue-400/70 to-transparent';
+  if (i === 0) return 'from-transparent via-gold to-transparent';
+  if (i === 1) return 'from-transparent via-slate-400/70 to-transparent';
+  if (i === 2) return 'from-transparent via-amber-600/70 to-transparent';
+  return 'from-transparent via-brand-600/40 to-transparent';
+}
+---
+
+<Layout title="Tabla" navProfile={navProfile} isAuthed={true}>
+  <div class="space-y-8">
+
+    <!-- Header -->
+    <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <h1 class="font-display text-4xl text-white tracking-wide">TABLA DE POSICIONES</h1>
+        <span class="text-sm text-slate-500 capitalize">{today}</span>
+      </div>
+      {navProfile?.es_referi && (
+        <div class="flex flex-col gap-2 self-start sm:self-auto sm:items-end">
+          <div class="flex gap-2 flex-wrap">
+            <!-- Compartir tabla -->
+            <button id="btn-share-tabla"
+              class="flex items-center gap-2 bg-[#25D366]/10 border border-[#25D366]/30 text-[#25D366] text-sm font-semibold px-4 py-2.5 rounded-xl transition active:bg-[#25D366]/20">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4 flex-shrink-0">
+                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
+                <path d="M12 0C5.373 0 0 5.373 0 12c0 2.127.558 4.126 1.532 5.859L.057 23.428a.5.5 0 0 0 .609.61l5.699-1.451A11.945 11.945 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.818 9.818 0 0 1-4.964-1.347l-.356-.211-3.683.938.974-3.562-.232-.367A9.818 9.818 0 0 1 2.182 12C2.182 6.57 6.57 2.182 12 2.182S21.818 6.57 21.818 12 17.43 21.818 12 21.818z"/>
+              </svg>
+              Tabla
+            </button>
+            <!-- Compartir pagos -->
+            <button id="btn-share-pagos"
+              disabled={pagosExpired}
+              class="flex items-center gap-2 bg-[#25D366]/10 border border-[#25D366]/30 text-[#25D366] text-sm font-semibold px-4 py-2.5 rounded-xl transition active:bg-[#25D366]/20 disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4 flex-shrink-0">
+                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
+                <path d="M12 0C5.373 0 0 5.373 0 12c0 2.127.558 4.126 1.532 5.859L.057 23.428a.5.5 0 0 0 .609.61l5.699-1.451A11.945 11.945 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.818 9.818 0 0 1-4.964-1.347l-.356-.211-3.683.938.974-3.562-.232-.367A9.818 9.818 0 0 1 2.182 12C2.182 6.57 6.57 2.182 12 2.182S21.818 6.57 21.818 12 17.43 21.818 12 21.818z"/>
+              </svg>
+              {pagosExpired ? 'Pagos 🔒' : 'Pagos 💰'}
+            </button>
+          </div>
+          {(pagosDeadline70 || pagosDeadline50) && (
+            <div class="text-xs space-y-0.5">
+              {pagosDeadline70 && (
+                <div class={expired70 ? 'text-fifared' : 'text-slate-500'}>
+                  1er pago (70 Bs): <span class="font-medium">{fmtDeadline(pagosDeadline70)}</span>
+                  {expired70 && ' 🔒'}
+                </div>
+              )}
+              {pagosDeadline50 && (
+                <div class={expired50 ? 'text-fifared' : 'text-slate-500'}>
+                  2do pago (50 Bs): <span class="font-medium">{fmtDeadline(pagosDeadline50)}</span>
+                  {expired50 && ' 🔒'}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+
+    <script type="application/json" id="standings-data" set:html={JSON.stringify(rows.map((p, i) => ({ pos: i + 1, username: p.username, pts: p.puntos_totales })))}></script>
+    <script type="application/json" id="standings-meta" set:html={JSON.stringify({ today, pozoTotal, pagosDeadline70, pagosDeadline50 })}></script>
+    <script type="application/json" id="pagos-data" set:html={JSON.stringify(rows.map(p => ({ username: p.username, pago_70: p.pago_70, pago_50: p.pago_50 })))}></script>
+
+    <!-- STATS CARDS -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <!-- Participantes -->
+      <div class="bg-brand-900 border border-brand-800 rounded-2xl px-4 py-3 flex flex-col gap-1">
+        <span class="text-xs text-slate-500 uppercase tracking-wide">Jugadores</span>
+        <span class="font-display text-3xl text-white">{rows.length}</span>
+      </div>
+
+      <!-- Pozo total -->
+      <div class="bg-brand-900 border border-brand-800 rounded-2xl px-4 py-3 flex flex-col gap-1">
+        <span class="text-xs text-slate-500 uppercase tracking-wide">Pozo total</span>
+        <span class="font-display text-3xl text-gold">{pozoTotal} <span class="text-base font-sans text-slate-500">Bs</span></span>
+      </div>
+
+      <!-- Pagaron completo -->
+      <div class="bg-brand-900 border border-brand-800 rounded-2xl px-4 py-3 flex flex-col gap-1">
+        <span class="text-xs text-slate-500 uppercase tracking-wide">Pago completo</span>
+        <span class="font-display text-3xl text-gol">{countPago50}<span class="text-slate-600 text-base font-sans"> / {rows.length}</span></span>
+      </div>
+
+      <!-- Próximo partido -->
+      {nextMatch ? (
+        <div class="bg-brand-900 border border-brand-800 rounded-2xl px-4 py-3 flex flex-col gap-1">
+          <span class="text-xs text-slate-500 uppercase tracking-wide">Próximo partido</span>
+          <span class="font-display text-3xl text-white">{countdownLabel(nextMatch.match_date)}</span>
+          <span class="text-xs text-slate-600 truncate">{nextMatch.home_team} vs {nextMatch.away_team}</span>
+        </div>
+      ) : (
+        <div class="bg-brand-900 border border-brand-800 rounded-2xl px-4 py-3 flex flex-col gap-1">
+          <span class="text-xs text-slate-500 uppercase tracking-wide">Próximo partido</span>
+          <span class="text-sm text-slate-600">Sin partidos próximos</span>
+        </div>
+      )}
+    </div>
+
+    <!-- STANDINGS — mobile cards / desktop table -->
+    <div>
+
+      <!-- Mobile: cards -->
+      <div class="flex flex-col gap-2 sm:hidden">
+        {rows.map((p, i) => {
+          const gap = leaderPoints - p.puntos_totales;
+          const isMe = p.id === user.id;
+          return (
+            <div class={`relative rounded-2xl pl-5 pr-4 py-3 flex items-center gap-3 overflow-hidden ${rowStyle(i, isMe)}`}>
+
+              {/* Línea difuminada izquierda */}
+              <div class={`absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b ${accentLine(i, isMe)}`} />
+
+              <div class="text-2xl w-8 text-center flex-shrink-0">
+                {MEDALS[i] !== undefined ? MEDALS[i] : <span class="font-mono text-slate-500 text-sm">{i + 1}</span>}
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class={`font-semibold text-base ${isMe ? 'text-white' : i === rows.length - 1 ? 'text-slate-600' : 'text-slate-100'}`}>
+                    {p.username}
+                  </span>
+                  {isMe && <span class="text-xs text-brand-400 font-medium">(tú)</span>}
+                  {i === rows.length - 1 && rows.length > 1 && <span class="text-xs font-bold text-fifared tracking-widest">👻 LOSER!!</span>}
+                  {p.es_referi && <span class="text-xs text-gold">⚖️</span>}
+                  {(() => { const s = sanctionMap.get(p.id); return s ? (
+                    <span class="flex gap-0.5">
+                      {'🟨'.repeat(s.yellows)}{'🟥'.repeat(s.reds)}
+                    </span>
+                  ) : null; })()}
+                </div>
+                <div class="flex items-center gap-2 mt-0.5">
+                  <div class="flex items-center gap-1 text-xs">
+                    <span class={p.pago_70 ? 'text-gol' : 'text-roja'}>{p.pago_70 ? '✅' : '❌'} 70 Bs</span>
+                    <span class="text-brand-700">·</span>
+                    <span class={p.pago_50 ? 'text-gol' : 'text-slate-600'}>{p.pago_50 ? '✅' : '❌'} 50 Bs</span>
+                  </div>
+                  {gap > 0 && (
+                    <span class="text-xs text-slate-600">−{gap} pts</span>
+                  )}
+                </div>
+              </div>
+              <div class="text-right flex-shrink-0">
+                <span class={`font-display text-3xl ${pointColor(i, isMe)}`}>
+                  {p.puntos_totales}
+                </span>
+                <div class="text-xs text-slate-600">pts</div>
+              </div>
+            </div>
+          );
+        })}
+        {rows.length === 0 && (
+          <div class="text-center py-12 text-slate-600 text-base">
+            Aún no hay participantes registrados.
+          </div>
+        )}
+      </div>
+
+      <!-- Desktop: table -->
+      <div class="hidden sm:block bg-brand-900 border border-brand-800 rounded-2xl overflow-hidden">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-brand-800 text-slate-500 text-xs uppercase">
+              <th class="px-4 py-3 text-left w-10">#</th>
+              <th class="px-4 py-3 text-left">Jugador</th>
+              <th class="px-4 py-3 text-right">Puntos</th>
+              <th class="px-4 py-3 text-center hidden md:table-cell">Diferencia</th>
+              <th class="px-4 py-3 text-center">70 Bs</th>
+              <th class="px-4 py-3 text-center">50 Bs</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((p, i) => {
+              const gap = leaderPoints - p.puntos_totales;
+              const isMe = p.id === user.id;
+              return (
+                <tr class={`border-b border-brand-800/40 ${isMe ? 'bg-brand-700/20' : i === 0 ? 'bg-yellow-500/8' : i === 1 ? 'bg-slate-400/5' : i === 2 ? 'bg-amber-700/8' : ''}`}>
+                  <td class="py-3 pl-0 pr-4 font-mono text-lg w-10">
+                    <div class="flex items-center gap-2 h-full">
+                      <div class={`w-[3px] h-8 rounded-full bg-gradient-to-b flex-shrink-0 ${accentLine(i, isMe)}`} />
+                      {MEDALS[i] !== undefined ? MEDALS[i] : <span class="text-slate-500 text-sm">{i + 1}</span>}
+                    </div>
+                  </td>
+                  <td class="px-4 py-3">
+                    <div class="flex items-center gap-2">
+                      <span class={`font-semibold ${isMe ? 'text-white' : i === rows.length - 1 ? 'text-slate-600' : 'text-slate-100'}`}>
+                        {p.username}
+                      </span>
+                      {isMe && <span class="text-xs text-brand-400">(tú)</span>}
+                      {i === rows.length - 1 && rows.length > 1 && <span class="text-xs font-bold text-fifared tracking-widest">👻 LOSER!!</span>}
+                      {p.es_referi && <span class="text-gold text-xs">⚖️</span>}
+                      {(() => { const s = sanctionMap.get(p.id); return s ? (
+                        <span class="flex gap-0.5 text-sm">
+                          {'🟨'.repeat(s.yellows)}{'🟥'.repeat(s.reds)}
+                        </span>
+                      ) : null; })()}
+                    </div>
+                  </td>
+                  <td class="px-4 py-3 text-right">
+                    <span class={`font-display text-2xl ${pointColor(i, isMe)}`}>
+                      {p.puntos_totales}
+                    </span>
+                    <span class="text-slate-600 text-xs ml-1">pts</span>
+                  </td>
+                  <td class="px-4 py-3 text-center hidden md:table-cell">
+                    {gap > 0
+                      ? <span class="text-slate-500 text-xs">−{gap}</span>
+                      : <span class="text-gold text-xs">líder</span>
+                    }
+                  </td>
+                  <td class="px-4 py-3 text-center text-base">
+                    {p.pago_70 ? <span class="text-gol">✅</span> : <span class="text-roja">❌</span>}
+                  </td>
+                  <td class="px-4 py-3 text-center text-base">
+                    {p.pago_50 ? <span class="text-gol">✅</span> : <span class="text-slate-600">❌</span>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        {rows.length === 0 && (
+          <div class="text-center py-12 text-slate-600">
+            Aún no hay participantes registrados.
+          </div>
+        )}
+      </div>
+    </div>
+
+    <!-- RESUMEN ÚLTIMA JORNADA -->
+    {lastJornadaMatches.length > 0 && (
+      <div class="space-y-3">
+        <div class="flex items-center justify-between">
+          <h2 class="font-display text-2xl text-white tracking-wide">ÚLTIMA JORNADA</h2>
+          {lastJornadaName && <span class="text-xs text-slate-500 uppercase tracking-wide">{lastJornadaName}</span>}
+        </div>
+        <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {lastJornadaMatches.map((m: any) => (
+            <div class="bg-brand-900 border border-brand-800/60 rounded-xl px-4 py-3 flex items-center gap-3">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center justify-between gap-2 text-sm font-semibold text-white">
+                  <span class="truncate flex-1">{m.home_team}</span>
+                  <span class="font-display text-lg text-gold shrink-0 tabular-nums">
+                    {m.home_score} – {m.away_score}
+                  </span>
+                  <span class="truncate flex-1 text-right">{m.away_team}</span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+        <a href="/resultados" class="inline-block text-xs text-brand-400 hover:text-brand-300 transition">
+          Ver todos los pronósticos →
+        </a>
+      </div>
+    )}
+
+    <!-- PRÓXIMOS PARTIDOS -->
+    {proximosPartidos && proximosPartidos.length > 0 && (
+      <div class="space-y-4">
+        <h2 class="font-display text-2xl text-white tracking-wide">PRÓXIMOS PARTIDOS</h2>
+        <div class="grid gap-3 sm:grid-cols-2">
+          {proximosPartidos.map((m: any) => {
+            const closed = cierre2h(m.jornada, m.match_date);
+            const hasPredicted = predictedSet.has(m.id);
+            return (
+              <div class={`bg-brand-900 border rounded-2xl p-4 space-y-3 transition ${closed ? 'border-fifared/40' : 'border-brand-700/60'}`}>
+                <div class="flex items-center justify-between text-xs">
+                  <span class="text-slate-500 uppercase tracking-wide">
+                    {m.stage === 'group' ? `Grupo ${m.group_name}` : m.round}
+                    {m.jornada && <span class="ml-1 text-brand-600">· {m.jornada}</span>}
+                  </span>
+                  <span class={`font-semibold ${closed ? 'text-fifared' : 'text-gol'}`}>
+                    {closed ? '🔒 Cerrado' : `⏱ ${tiempoRestante(m.match_date)}`}
+                  </span>
+                </div>
+                <div class="flex items-center justify-between text-base font-semibold text-white">
+                  <span class="flex-1">{m.home_team}</span>
+                  <span class="text-slate-600 text-xs px-2 font-normal">vs</span>
+                  <span class="flex-1 text-right">{m.away_team}</span>
+                </div>
+                <div class="flex items-center justify-between">
+                  <div class="text-xs text-slate-600">
+                    {new Date(m.match_date).toLocaleString('es-BO', {
+                      hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short',
+                      timeZone: 'America/La_Paz',
+                    })}
+                  </div>
+                  {!closed && hasPredicted && (
+                    <span class="text-xs text-gol font-medium">✓ Pronosticado</span>
+                  )}
+                  {!closed && !hasPredicted && (
+                    <span class="text-xs text-amarilla font-medium">⚠ Sin pronóstico</span>
+                  )}
+                </div>
+                {!closed && (
+                  <a href={`/predictions/${m.id}`}
+                    class={`block text-center text-sm font-bold py-3 rounded-xl transition active:opacity-80 min-h-[48px] flex items-center justify-center ${hasPredicted ? 'bg-brand-800 text-slate-300 border border-brand-700' : 'bg-gold text-brand-950'}`}>
+                    {hasPredicted ? 'Editar pronóstico →' : 'Hacer pronóstico →'}
+                  </a>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    )}
+
+  </div>
+</Layout>
+
+<script is:inline>
+(function () {
+  var WA_ICON = '\uD83D\uDCF2'; // 📲 inline para evitar encoding issues
+
+  // ── Compartir tabla ──────────────────────────────────────
+  var btnTabla = document.getElementById('btn-share-tabla');
+  if (btnTabla) {
+    btnTabla.addEventListener('click', function () {
+      var rows = JSON.parse(document.getElementById('standings-data').textContent);
+      var meta = JSON.parse(document.getElementById('standings-meta').textContent);
+      var MEDALS = ['\uD83E\uDD47', '\uD83E\uDD48', '\uD83E\uDD49'];
+      var lines = rows.map(function (p) {
+        var medal = MEDALS[p.pos - 1] || (p.pos + '.');
+        return medal + ' ' + p.username + ' \u2014 ' + p.pts + ' pts';
+      });
+      var text = [
+        '\uD83C\uDFC6 *TABLA DE POSICIONES*',
+        '_Polla Mundial 2026_',
+        '',
+      ].concat(lines).concat([
+        '',
+        '\uD83D\uDCB0 Pozo: ' + meta.pozoTotal + ' Bs',
+      ]).join('\n');
+      window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
+    });
+  }
+
+  // ── Compartir pagos ──────────────────────────────────────
+  var btnPagos = document.getElementById('btn-share-pagos');
+  if (!btnPagos) return;
+
+  btnPagos.addEventListener('click', function () {
+    var players = JSON.parse(document.getElementById('pagos-data').textContent);
+    var meta    = JSON.parse(document.getElementById('standings-meta').textContent);
+    function fmtIso(iso) {
+      if (!iso) return '';
+      return new Date(iso).toLocaleString('es-BO', {
+        weekday: 'short', day: 'numeric', month: 'short',
+        hour: '2-digit', minute: '2-digit',
+        timeZone: 'America/La_Paz',
+      });
+    }
+
+    var deadlines = [];
+    if (meta.pagosDeadline70) deadlines.push('_\u23F0 1er pago (70 Bs): hasta ' + fmtIso(meta.pagosDeadline70) + '_');
+    if (meta.pagosDeadline50) deadlines.push('_\u23F0 2do pago (50 Bs): hasta ' + fmtIso(meta.pagosDeadline50) + '_');
+
+    var completos  = players.filter(function (p) { return p.pago_70 && p.pago_50; });
+    var parciales  = players.filter(function (p) { return p.pago_70 && !p.pago_50; });
+    var pendientes = players.filter(function (p) { return !p.pago_70; });
+
+    var lines = [];
+    completos.forEach(function (p)  { lines.push('\u2705 ' + p.username + ' \u2014 Completo (70+50 Bs)'); });
+    parciales.forEach(function (p)  { lines.push('\u23F3 ' + p.username + ' \u2014 1er pago \u2714, falta 2do'); });
+    pendientes.forEach(function (p) { lines.push('\u274C ' + p.username + ' \u2014 Sin pago'); });
+
+    var metaTotal = players.length * 100;
+
+    var header = ['\uD83D\uDCB0 *ESTADO DE PAGOS*', '_Polla Mundial 2026_'].concat(deadlines);
+
+    var text = header.concat([''])
+      .concat(lines)
+      .concat(['', 'Pozo actual: ' + meta.pozoTotal + ' Bs \u2502 Premio m\u00e1ximo: ' + metaTotal + ' Bs'])
+      .join('\n');
+
+    window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
+  });
+})();
+</script>

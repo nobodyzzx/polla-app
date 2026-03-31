@@ -1,0 +1,26 @@
+{
+  "name": "polla-mundial-2026",
+  "type": "module",
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "astro dev --host",
+    "build": "astro build",
+    "preview": "astro preview",
+    "astro": "astro",
+    "check": "astro check"
+  },
+  "dependencies": {
+    "@astrojs/node": "latest",
+    "@supabase/supabase-js": "latest",
+    "astro": "latest",
+    "country-flag-emoji-polyfill": "^0.1.8"
+  },
+  "devDependencies": {
+    "@astrojs/check": "latest",
+    "@tailwindcss/vite": "latest",
+    "@types/node": "latest",
+    "tailwindcss": "latest",
+    "tsx": "^4.21.0",
+    "typescript": "latest"
+  }
+}

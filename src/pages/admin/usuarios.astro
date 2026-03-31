@@ -1,0 +1,314 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import { supabase, supabaseAdmin } from '@/lib/supabase';
+
+const accessToken = Astro.cookies.get('sb-access-token')?.value;
+const refreshToken = Astro.cookies.get('sb-refresh-token')?.value;
+if (!accessToken || !refreshToken) { Astro.cookies.delete("sb-access-token", { path: "/" }); Astro.cookies.delete("sb-refresh-token", { path: "/" }); return Astro.redirect("/login"); }
+
+const { data: { user } } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+if (!user) { Astro.cookies.delete("sb-access-token", { path: "/" }); Astro.cookies.delete("sb-refresh-token", { path: "/" }); return Astro.redirect("/login"); }
+
+const { data: navProfile } = await supabase.from('profiles').select('username, puntos_totales, es_referi').eq('id', user.id).single();
+if (!navProfile?.es_referi) return Astro.redirect('/dashboard');
+
+const [
+  { data: authList },
+  { data: profiles },
+] = await Promise.all([
+  supabaseAdmin.auth.admin.listUsers({ perPage: 200 }),
+  supabaseAdmin.from('profiles').select('id, username, es_referi, puntos_totales, expulsado, pago_70, pago_50, participa'),
+]);
+
+const profileMap: Record<string, any> = {};
+for (const p of profiles ?? []) profileMap[p.id] = p;
+
+const users = (authList?.users ?? []).map(u => ({
+  id: u.id,
+  email: u.email ?? '',
+  created_at: u.created_at,
+  last_sign_in: u.last_sign_in_at,
+  profile: profileMap[u.id] ?? null,
+})).sort((a, b) => {
+  const aRef = a.profile?.es_referi ? 0 : 1;
+  const bRef = b.profile?.es_referi ? 0 : 1;
+  if (aRef !== bRef) return aRef - bRef;
+  return (a.profile?.username ?? '').localeCompare(b.profile?.username ?? '');
+});
+
+const jugadores = users.filter(u => !u.profile?.es_referi);
+const referis   = users.filter(u =>  u.profile?.es_referi);
+
+function initials(name: string) {
+  return name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+}
+
+function avatarColor(id: string) {
+  const colors = [
+    'bg-blue-600','bg-purple-600','bg-emerald-600','bg-orange-600',
+    'bg-pink-600','bg-cyan-600','bg-rose-600','bg-indigo-600',
+  ];
+  const idx = id.charCodeAt(0) % colors.length;
+  return colors[idx];
+}
+---
+
+<Layout title="Gestión de usuarios" navProfile={navProfile} isAuthed={true}>
+  <div class="space-y-8">
+
+    {/* ── Header ── */}
+    <div class="flex items-center justify-between gap-2">
+      <div>
+        <h1 class="font-display text-4xl text-white tracking-wide">USUARIOS</h1>
+        <p class="text-slate-500 text-sm mt-1">
+          {jugadores.length} jugador{jugadores.length !== 1 ? 'es' : ''} · {referis.length} réferi{referis.length !== 1 ? 's' : ''}
+        </p>
+      </div>
+      <a href="/admin" class="text-xs text-slate-500 hover:text-white transition px-3 py-1.5 border border-brand-700 rounded-lg">
+        ← Panel VAR
+      </a>
+    </div>
+
+    {/* ── Stats rápidas ── */}
+    <div class="grid grid-cols-3 gap-3">
+      <div class="bg-brand-900 border border-brand-700/60 rounded-2xl p-4 text-center">
+        <div class="font-display text-3xl text-white">{jugadores.length}</div>
+        <div class="text-xs text-slate-500 mt-1">Jugadores</div>
+      </div>
+      <div class="bg-brand-900 border border-brand-700/60 rounded-2xl p-4 text-center">
+        <div class="font-display text-3xl text-gol">{jugadores.filter(u => u.profile?.pago_70).length}</div>
+        <div class="text-xs text-slate-500 mt-1">Pagaron</div>
+      </div>
+      <div class="bg-brand-900 border border-brand-700/60 rounded-2xl p-4 text-center">
+        <div class="font-display text-3xl text-fifared">{jugadores.filter(u => u.profile?.expulsado).length}</div>
+        <div class="text-xs text-slate-500 mt-1">Expulsados</div>
+      </div>
+    </div>
+
+    {/* ── Agregar jugador ── */}
+    <details class="group bg-brand-900 border border-brand-700/60 rounded-2xl overflow-hidden">
+      <summary class="flex items-center justify-between px-5 py-4 cursor-pointer list-none select-none">
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 rounded-full bg-gold/20 flex items-center justify-center text-gold text-sm font-bold">+</div>
+          <span class="font-semibold text-white text-sm">Agregar jugador</span>
+        </div>
+        <svg class="w-4 h-4 text-slate-600 transition-transform group-open:rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </summary>
+      <div class="border-t border-brand-800 px-5 py-4">
+        <form method="POST" action="/api/admin/create-user" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs text-slate-500 mb-1">Email</label>
+            <input name="email" type="email" required placeholder="jugador@correo.com"
+              class="w-full bg-brand-800 border border-brand-700 rounded-xl px-3 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-gold/50" />
+          </div>
+          <div>
+            <label class="block text-xs text-slate-500 mb-1">Nombre en la polla</label>
+            <input name="username" type="text" required placeholder="Ej: El Pelé"
+              class="w-full bg-brand-800 border border-brand-700 rounded-xl px-3 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-gold/50" />
+          </div>
+          <div>
+            <label class="block text-xs text-slate-500 mb-1">Contraseña <span class="text-slate-600">(opcional — vacío = magic link)</span></label>
+            <input name="password" type="text" placeholder="••••••••"
+              class="w-full bg-brand-800 border border-brand-700 rounded-xl px-3 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-gold/50" />
+          </div>
+          <div class="flex items-end gap-3">
+            <label class="flex items-center gap-2 text-xs text-slate-400 pb-2.5 cursor-pointer select-none">
+              <input name="es_referi" type="checkbox" class="w-4 h-4 rounded accent-gold" />
+              Es réferi
+            </label>
+            <button type="submit" class="flex-1 bg-gold text-brand-950 font-bold py-2.5 rounded-xl text-sm hover:opacity-90 transition">
+              Crear
+            </button>
+          </div>
+        </form>
+      </div>
+    </details>
+
+    {/* ── Lista de jugadores ── */}
+    {jugadores.length > 0 && (
+      <div class="space-y-3">
+        <h2 class="text-xs font-semibold text-slate-500 uppercase tracking-widest px-1">Jugadores</h2>
+        <div class="space-y-2">
+          {jugadores.map(u => (
+            <details class="group bg-brand-900 border border-brand-700/60 rounded-2xl overflow-hidden hover:border-brand-600/60 transition-colors">
+              <summary class="flex items-center gap-3 px-4 py-3 cursor-pointer list-none select-none">
+
+                {/* Avatar */}
+                <div class={`w-9 h-9 rounded-full flex-shrink-0 flex items-center justify-center text-white text-xs font-bold ${avatarColor(u.id)}`}>
+                  {initials(u.profile?.username ?? u.email)}
+                </div>
+
+                {/* Info */}
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <span class="font-semibold text-sm text-white truncate">
+                      {u.profile?.username ?? <span class="italic text-slate-600">sin perfil</span>}
+                    </span>
+                    {u.id === user.id && <span class="text-[10px] text-brand-400 font-bold bg-brand-700 px-1.5 py-0.5 rounded-full">TÚ</span>}
+                    {u.profile?.expulsado && <span class="text-[10px] bg-fifared/20 text-fifared px-1.5 py-0.5 rounded-full font-bold">🟥🟥 EXPULSADO</span>}
+                  </div>
+                  <div class="flex items-center gap-3 mt-0.5">
+                    <span class="text-xs text-slate-500 truncate">{u.email}</span>
+                  </div>
+                </div>
+
+                {/* Puntos + estado pago + chevron */}
+                <div class="flex items-center gap-4 flex-shrink-0">
+                  <div class="text-right hidden sm:block">
+                    <div class="font-display text-xl text-white">{u.profile?.puntos_totales ?? 0}</div>
+                    <div class="text-[10px] text-slate-600">pts</div>
+                  </div>
+                  <div class="w-px h-6 bg-brand-700 hidden sm:block" />
+                  <div class="flex flex-col items-center gap-0.5">
+                    {u.profile?.pago_70 && u.profile?.pago_50
+                      ? <span title="Pago completo" class="text-base">✅</span>
+                      : u.profile?.pago_70
+                      ? <span title="Pago parcial" class="text-base">⏳</span>
+                      : <span title="Pago pendiente" class="text-base">❌</span>
+                    }
+                  </div>
+                  <svg class="w-4 h-4 text-slate-600 transition-transform group-open:rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
+              </summary>
+
+              {/* Panel edición */}
+              <div class="border-t border-brand-800 bg-brand-800/30 px-4 py-4 space-y-4">
+                <form method="POST" action="/api/admin/update-user" class="space-y-3">
+                  <input type="hidden" name="user_id" value={u.id} />
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label class="block text-xs text-slate-500 mb-1">Nombre</label>
+                      <input name="username" type="text" required value={u.profile?.username ?? ''}
+                        class="w-full bg-brand-800 border border-brand-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-gold/50" />
+                    </div>
+                    <div>
+                      <label class="block text-xs text-slate-500 mb-1">Email</label>
+                      <input name="email" type="email" required value={u.email}
+                        class="w-full bg-brand-800 border border-brand-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-gold/50" />
+                    </div>
+                    <div>
+                      <label class="block text-xs text-slate-500 mb-1">Nueva contraseña <span class="text-slate-600">(vacío = no cambia)</span></label>
+                      <input name="password" type="text" placeholder="••••••••"
+                        class="w-full bg-brand-800 border border-brand-700 rounded-xl px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-gold/50" />
+                    </div>
+                    <div class="flex items-end gap-3">
+                      <label class="flex items-center gap-2 text-xs text-slate-400 pb-2 cursor-pointer select-none">
+                        <input name="es_referi" type="checkbox" class="w-4 h-4 rounded accent-gold"
+                          checked={u.profile?.es_referi ?? false} />
+                        Es réferi
+                      </label>
+                      <button type="submit" class="flex-1 bg-brand-700 hover:bg-brand-600 border border-brand-600 text-white font-semibold py-2 rounded-xl text-sm transition">
+                        Guardar cambios
+                      </button>
+                    </div>
+                  </div>
+                </form>
+
+                {/* Último acceso */}
+                {u.last_sign_in && (
+                  <p class="text-[11px] text-slate-600">
+                    Último acceso: {new Date(u.last_sign_in).toLocaleString('es-CL', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    &nbsp;·&nbsp; Creado: {new Date(u.created_at).toLocaleDateString('es-CL', { day: '2-digit', month: 'short', year: 'numeric' })}
+                  </p>
+                )}
+
+                {u.id !== user.id && (
+                  <form method="POST" action="/api/admin/delete-user"
+                    onsubmit={`return confirm('¿Eliminar a ${u.profile?.username ?? u.email}?\\nSe borrarán sus pronósticos y sanciones.')`}>
+                    <input type="hidden" name="user_id" value={u.id} />
+                    <button type="submit" class="w-full flex items-center justify-center gap-2 text-xs text-fifared/70 hover:text-fifared border border-fifared/20 hover:border-fifared/40 hover:bg-fifared/5 transition py-2 rounded-xl">
+                      <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
+                      Eliminar usuario permanentemente
+                    </button>
+                  </form>
+                )}
+              </div>
+            </details>
+          ))}
+        </div>
+      </div>
+    )}
+
+    {/* ── Réferis ── */}
+    {referis.length > 0 && (
+      <div class="space-y-3">
+        <h2 class="text-xs font-semibold text-slate-500 uppercase tracking-widest px-1">Réferis</h2>
+        <div class="space-y-2">
+          {referis.map(u => (
+            <details class="group bg-brand-900 border border-gold/20 rounded-2xl overflow-hidden">
+              <summary class="flex items-center gap-3 px-4 py-3 cursor-pointer list-none select-none">
+                <div class="w-9 h-9 rounded-full flex-shrink-0 flex items-center justify-center bg-gold/20 text-gold text-xs font-bold">
+                  ⚖️
+                </div>
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-2">
+                    <span class="font-semibold text-sm text-white">{u.profile?.username ?? u.email}</span>
+                    <span class="text-[10px] bg-gold/20 text-gold px-1.5 py-0.5 rounded-full font-bold">RÉFERI</span>
+                    {u.id === user.id && <span class="text-[10px] text-brand-400 font-bold bg-brand-700 px-1.5 py-0.5 rounded-full">TÚ</span>}
+                  </div>
+                  <div class="text-xs text-slate-500 mt-0.5">{u.email}</div>
+                </div>
+                <svg class="w-4 h-4 text-slate-600 transition-transform group-open:rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+              </summary>
+              <div class="border-t border-brand-800 bg-brand-800/30 px-4 py-4 space-y-3">
+                <form method="POST" action="/api/admin/update-user" class="space-y-3">
+                  <input type="hidden" name="user_id" value={u.id} />
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label class="block text-xs text-slate-500 mb-1">Nombre</label>
+                      <input name="username" type="text" required value={u.profile?.username ?? ''}
+                        class="w-full bg-brand-800 border border-brand-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-gold/50" />
+                    </div>
+                    <div>
+                      <label class="block text-xs text-slate-500 mb-1">Email</label>
+                      <input name="email" type="email" required value={u.email}
+                        class="w-full bg-brand-800 border border-brand-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-gold/50" />
+                    </div>
+                    <div>
+                      <label class="block text-xs text-slate-500 mb-1">Nueva contraseña <span class="text-slate-600">(vacío = no cambia)</span></label>
+                      <input name="password" type="text" placeholder="••••••••"
+                        class="w-full bg-brand-800 border border-brand-700 rounded-xl px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-gold/50" />
+                    </div>
+                    <div class="flex items-end gap-3 flex-wrap">
+                      <label class="flex items-center gap-2 text-xs text-slate-400 pb-2 cursor-pointer select-none">
+                        <input name="es_referi" type="checkbox" class="w-4 h-4 rounded accent-gold" checked={true} />
+                        Es réferi
+                      </label>
+                      <label class="flex items-center gap-2 text-xs text-slate-400 pb-2 cursor-pointer select-none">
+                        <input name="participa" type="checkbox" class="w-4 h-4 rounded accent-gold"
+                          checked={u.profile?.participa ?? false} />
+                        Jugar en la polla
+                      </label>
+                      <button type="submit" class="flex-1 bg-brand-700 hover:bg-brand-600 border border-brand-600 text-white font-semibold py-2 rounded-xl text-sm transition">
+                        Guardar cambios
+                      </button>
+                    </div>
+                  </div>
+                </form>
+                {u.last_sign_in && (
+                  <p class="text-[11px] text-slate-600">
+                    Último acceso: {new Date(u.last_sign_in).toLocaleString('es-CL', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  </p>
+                )}
+              </div>
+            </details>
+          ))}
+        </div>
+      </div>
+    )}
+
+    {users.length === 0 && (
+      <div class="text-center py-20 text-slate-600">
+        <div class="text-5xl mb-4">👤</div>
+        <p>No hay usuarios registrados.</p>
+      </div>
+    )}
+
+  </div>
+</Layout>

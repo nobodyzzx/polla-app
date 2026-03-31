@@ -1,0 +1,344 @@
+---
+import '@/styles/global.css';
+import { ClientRouter } from 'astro:transitions';
+import { supabase } from '@/lib/supabase';
+
+interface NavProfile {
+  username: string;
+  puntos_totales: number;
+  es_referi: boolean;
+}
+
+interface Props {
+  title: string;
+  description?: string;
+  /** Pass the already-fetched profile to avoid a redundant DB call in Layout */
+  navProfile?: NavProfile | null;
+  /** Pass true if page already confirmed the user is logged in */
+  isAuthed?: boolean;
+}
+const { title, description = 'Polla Mundial 2026', navProfile, isAuthed } = Astro.props;
+
+let profile: NavProfile | null = navProfile ?? null;
+let showNav = isAuthed ?? false;
+
+if (!isAuthed) {
+  const accessToken = Astro.cookies.get('sb-access-token')?.value;
+  const refreshToken = Astro.cookies.get('sb-refresh-token')?.value;
+  if (accessToken && refreshToken) {
+    const { data: { user } } = await supabase.auth.setSession({
+      access_token: accessToken,
+      refresh_token: refreshToken,
+    });
+    showNav = !!user;
+    if (user && !navProfile) {
+      const { data } = await supabase
+        .from('profiles')
+        .select('username, puntos_totales, es_referi')
+        .eq('id', user.id)
+        .single();
+      profile = data;
+    }
+  }
+}
+---
+
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content={description} />
+    <title>{title} | Polla 2026</title>
+    <link rel="icon" href="/logo-fifa2026.png" />
+    <ClientRouter />
+  </head>
+  <script>
+    import { polyfillCountryFlagEmojis } from 'country-flag-emoji-polyfill';
+    polyfillCountryFlagEmojis();
+  </script>
+  <script is:inline>
+    let menuAbort = null;
+    let menuOpenedAt = 0;
+
+    function openMenu(menu) {
+      menuOpenedAt = Date.now();
+      menu.classList.remove('hidden');
+      requestAnimationFrame(() => {
+        menu.style.opacity = '1';
+        menu.style.transform = 'scaleY(1)';
+      });
+    }
+    function closeMenu(menu) {
+      menu.style.opacity = '0';
+      menu.style.transform = 'scaleY(0.95)';
+      setTimeout(() => menu.classList.add('hidden'), 180);
+    }
+
+    function initMenu() {
+      if (menuAbort) menuAbort.abort();
+      menuAbort = new AbortController();
+      const signal = menuAbort.signal;
+
+      const btn = document.getElementById('menu-btn');
+      const menu = document.getElementById('mobile-menu');
+      if (!btn || !menu) return;
+
+      menu.style.opacity = '0';
+      menu.style.transform = 'scaleY(0.95)';
+
+      btn.addEventListener('click', () => {
+        menu.classList.contains('hidden') ? openMenu(menu) : closeMenu(menu);
+      }, { signal });
+
+      menu.querySelectorAll('a, button').forEach(el =>
+        el.addEventListener('click', () => closeMenu(menu), { signal })
+      );
+
+      let scrollTimer;
+      window.addEventListener('scroll', () => {
+        if (menu.classList.contains('hidden')) return;
+        // Ignorar scroll durante 500ms tras abrir (el tap mobile genera micro-scroll)
+        if (Date.now() - menuOpenedAt < 500) return;
+        clearTimeout(scrollTimer);
+        scrollTimer = setTimeout(() => closeMenu(menu), 250);
+      }, { passive: true, signal });
+    }
+    document.addEventListener('DOMContentLoaded', initMenu);
+    document.addEventListener('astro:page-load', initMenu);
+
+    // ── Toast notifications ──────────────────────────────────────
+    function removeToast(toast) {
+      toast.style.opacity = '0';
+      toast.style.transform = 'translateY(-10px) scale(0.97)';
+      setTimeout(() => toast.remove(), 280);
+    }
+
+    function showToast(text, type) {
+      const container = document.getElementById('toast-container');
+      if (!container || !text) return;
+
+      const isErr = type === 'err';
+      const accentColor = isErr ? 'rgba(239,68,68,0.85)' : 'rgba(74,222,128,0.85)';
+      const borderColor = isErr ? 'rgba(239,68,68,0.35)' : 'rgba(74,222,128,0.35)';
+
+      const toast = document.createElement('div');
+      toast.style.cssText = `
+        opacity:0;
+        transform:translateY(-12px) scale(0.97);
+        transition:opacity 280ms ease,transform 280ms ease;
+        display:flex;
+        align-items:stretch;
+        overflow:hidden;
+        border-radius:1rem;
+        background:#0f172a;
+        border:1px solid ${borderColor};
+        box-shadow:0 20px 40px rgba(0,0,0,0.6);
+        pointer-events:auto;
+      `;
+
+      // Barra de acento izquierda (estilo standings)
+      const accent = document.createElement('div');
+      accent.style.cssText = `
+        width:3px;
+        flex-shrink:0;
+        background:linear-gradient(to bottom,transparent,${accentColor},transparent);
+      `;
+
+      // Contenido
+      const inner = document.createElement('div');
+      inner.style.cssText = 'display:flex;align-items:flex-start;gap:12px;padding:14px 16px;flex:1;';
+
+      const icon = document.createElement('span');
+      icon.style.cssText = 'font-size:1.1rem;flex-shrink:0;margin-top:1px;';
+      icon.textContent = isErr ? '❌' : '✅';
+
+      const msgEl = document.createElement('p');
+      msgEl.style.cssText = 'font-size:0.875rem;color:#f1f5f9;flex:1;line-height:1.4;font-weight:500;margin:0;';
+      msgEl.textContent = text;
+
+      const closeBtn = document.createElement('button');
+      closeBtn.style.cssText = 'color:#475569;font-size:1.25rem;line-height:1;flex-shrink:0;background:none;border:none;cursor:pointer;padding:0;margin-top:-2px;';
+      closeBtn.textContent = '×';
+      closeBtn.addEventListener('mouseover', () => closeBtn.style.color = '#f1f5f9');
+      closeBtn.addEventListener('mouseout',  () => closeBtn.style.color = '#475569');
+      closeBtn.addEventListener('click', () => { clearTimeout(timer); removeToast(toast); });
+
+      inner.append(icon, msgEl, closeBtn);
+      toast.append(accent, inner);
+      container.appendChild(toast);
+
+      requestAnimationFrame(() => {
+        toast.style.opacity = '1';
+        toast.style.transform = 'translateY(0) scale(1)';
+      });
+
+      const timer = setTimeout(() => removeToast(toast), 4500);
+    }
+
+    // ── Scroll restore tras redirect de formulario ───────────────
+    function attachScrollSave() {
+      document.querySelectorAll('form').forEach(form => {
+        if (form._scrollSave) return;
+        form._scrollSave = true;
+        form.addEventListener('submit', () => {
+          sessionStorage.setItem('restoreScrollY', String(Math.round(window.scrollY)));
+        });
+      });
+    }
+
+    function initToasts() {
+      // Restaurar posición de scroll si venimos de un submit
+      const savedY = sessionStorage.getItem('restoreScrollY');
+      if (savedY) {
+        sessionStorage.removeItem('restoreScrollY');
+        window.scrollTo({ top: parseInt(savedY, 10), behavior: 'instant' });
+      }
+
+      const params = new URLSearchParams(window.location.search);
+      const msg = params.get('msg');
+      const err = params.get('err') || params.get('error');
+
+      if (msg) showToast(decodeURIComponent(msg), 'msg');
+      if (err) showToast(decodeURIComponent(err), 'err');
+
+      if (msg || err) {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('msg');
+        url.searchParams.delete('err');
+        url.searchParams.delete('error');
+        history.replaceState({}, '', url.toString());
+      }
+
+      attachScrollSave();
+    }
+
+    document.addEventListener('DOMContentLoaded', initToasts);
+    document.addEventListener('astro:page-load', initToasts);
+  </script>
+  <body class="min-h-screen bg-brand-950 text-slate-100 antialiased">
+
+    {import.meta.env.PUBLIC_BETA === 'true' && (
+      <div class="bg-amber-500/15 border-b border-amber-500/30 text-center py-2 px-4 text-xs text-amber-300 sticky top-0 z-[60]">
+        🚧 <strong>Versión de prueba</strong> — los datos y pronósticos pueden resetearse antes del lanzamiento oficial
+      </div>
+    )}
+
+    <nav class="bg-brand-900/95 backdrop-blur-md sticky top-0 z-50">
+      <!-- FIFA accent gradient line -->
+      <div class="h-[2px] bg-gradient-to-r from-fifared via-gold to-fifared"></div>
+      <div class="max-w-5xl mx-auto px-3 h-14 flex items-center justify-between gap-2">
+
+        <a href="/" class="flex items-center min-h-[48px]">
+          <img src="/logo-fifa2026.png" alt="FIFA 2026" class="h-7 sm:h-8 object-contain" />
+        </a>
+
+        {showNav ? (
+          <>
+            {/* ── Desktop: nav horizontal completo ── */}
+            <div class="hidden sm:flex items-center gap-1">
+              <a href="/dashboard" class="flex items-center justify-center min-h-[48px] px-2 text-slate-400 hover:text-white transition text-sm">Tabla</a>
+              <a href="/grupos"    class="flex items-center justify-center min-h-[48px] px-2 text-slate-400 hover:text-white transition text-sm">Grupos</a>
+              <a href="/predictions" class="flex items-center justify-center min-h-[48px] px-2 text-slate-400 hover:text-white transition text-sm">Partidos</a>
+              <a href="/resultados" class="flex items-center justify-center min-h-[48px] px-2 text-slate-400 hover:text-white transition text-sm">Resultados</a>
+              <a href="/reglas"   class="flex items-center justify-center min-h-[48px] px-2 text-slate-400 hover:text-white transition text-sm">Reglas</a>
+              {profile?.es_referi && (<>
+                <a href="/admin" class="flex items-center justify-center min-h-[48px] px-2 text-gold font-semibold transition text-sm">⚖️ VAR</a>
+                <a href="/admin/usuarios" class="flex items-center justify-center min-h-[48px] px-2 text-gold/70 hover:text-gold transition text-sm">👥</a>
+              </>)}
+              <div class="bg-brand-800 border border-brand-700 px-2.5 py-1.5 rounded-lg text-xs flex items-center gap-1.5 ml-1">
+                <span class="text-slate-400">{profile?.username}</span>
+                <span class="text-gold font-bold">{profile?.puntos_totales ?? 0}p</span>
+              </div>
+              <form method="POST" action="/api/auth/logout">
+                <button class="flex items-center justify-center min-h-[48px] min-w-[40px] text-slate-600 hover:text-fifared transition text-xs px-2" title="Salir">
+                  Salir
+                </button>
+              </form>
+            </div>
+
+            {/* ── Mobile: pronósticos + puntos + hamburguesa ── */}
+            <div class="flex sm:hidden items-center gap-1">
+              <a href="/predictions"
+                class="flex items-center justify-center min-h-[48px] min-w-[48px] text-slate-300 active:text-white transition text-xl"
+                title="Pronósticos">📅</a>
+              <span class="bg-brand-800 border border-brand-700 px-2 py-1 rounded-lg text-xs font-bold text-gold">
+                {profile?.puntos_totales ?? 0}p
+              </span>
+              <button id="menu-btn"
+                class="flex items-center justify-center min-h-[48px] min-w-[48px] text-slate-400 active:text-white transition"
+                aria-label="Menú">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </button>
+            </div>
+          </>
+        ) : (
+          <a href="/login"
+            class="bg-gold text-brand-950 font-bold px-5 min-h-[40px] flex items-center rounded-lg transition text-sm active:bg-gold-dark">
+            Entrar
+          </a>
+        )}
+      </div>
+
+      {/* ── Mobile: menú desplegable ── */}
+      {showNav && (
+        <div id="mobile-menu"
+          class="hidden sm:hidden bg-brand-900/98 backdrop-blur-md"
+          style="transition: opacity 180ms ease, transform 180ms ease; transform-origin: top;">
+
+          {/* Línea divisora difuminada */}
+          <div class="h-px bg-gradient-to-r from-transparent via-gold/60 to-transparent" />
+
+          <div class="max-w-5xl mx-auto px-6 pt-3 pb-2 flex flex-col items-end">
+
+            {/* Usuario alineado a la derecha */}
+            <div class="flex items-center gap-2 py-3 w-full justify-end">
+              <span class="text-xs text-slate-500">{profile?.username}</span>
+              <span class="bg-brand-800 border border-brand-700 px-2.5 py-1 rounded-lg text-xs font-bold text-gold">
+                {profile?.puntos_totales ?? 0} pts
+              </span>
+            </div>
+
+            <div class="h-px w-full bg-gradient-to-r from-transparent via-brand-600 to-transparent" />
+            <a href="/dashboard"   class="flex items-center justify-end gap-3 w-full py-3.5 text-slate-300 active:text-white text-sm font-medium"><span>Tabla de posiciones</span> 🏆</a>
+            <div class="h-px w-full bg-gradient-to-r from-transparent via-brand-800 to-transparent" />
+            <a href="/grupos"      class="flex items-center justify-end gap-3 w-full py-3.5 text-slate-300 active:text-white text-sm font-medium"><span>Grupos y Eliminatorias</span> 📊</a>
+            <div class="h-px w-full bg-gradient-to-r from-transparent via-brand-800 to-transparent" />
+            <a href="/predictions" class="flex items-center justify-end gap-3 w-full py-3.5 text-slate-300 active:text-white text-sm font-medium"><span>Mis Pronósticos</span> 📅</a>
+            <div class="h-px w-full bg-gradient-to-r from-transparent via-brand-800 to-transparent" />
+            <a href="/resultados"  class="flex items-center justify-end gap-3 w-full py-3.5 text-slate-300 active:text-white text-sm font-medium"><span>Resultados</span> 📊</a>
+            <div class="h-px w-full bg-gradient-to-r from-transparent via-brand-800 to-transparent" />
+            <a href="/reglas"      class="flex items-center justify-end gap-3 w-full py-3.5 text-slate-300 active:text-white text-sm font-medium"><span>Reglamento</span> 📋</a>
+            {profile?.es_referi && (<>
+              <div class="h-px w-full bg-gradient-to-r from-transparent via-brand-800 to-transparent" />
+              <a href="/admin" class="flex items-center justify-end gap-3 w-full py-3.5 text-gold text-sm font-semibold"><span>Panel VAR</span> ⚖️</a>
+              <div class="h-px w-full bg-gradient-to-r from-transparent via-brand-800 to-transparent" />
+              <a href="/admin/usuarios" class="flex items-center justify-end gap-3 w-full py-3.5 text-gold/80 text-sm font-semibold"><span>Usuarios</span> 👥</a>
+            </>)}
+            <div class="h-px w-full bg-gradient-to-r from-transparent via-brand-800 to-transparent" />
+            <form method="POST" action="/api/auth/logout" class="w-full">
+              <button class="flex items-center justify-end gap-3 w-full py-3.5 text-slate-500 active:text-fifared text-sm">
+                <span>Cerrar sesión</span> 🚪
+              </button>
+            </form>
+            <div class="h-px w-full bg-gradient-to-r from-transparent via-brand-800 to-transparent" />
+          </div>
+        </div>
+      )}
+    </nav>
+
+    <!-- Toast container -->
+    <div id="toast-container" class="fixed top-4 right-4 z-[200] flex flex-col gap-2 w-[calc(100vw-2rem)] sm:w-80 pointer-events-none"></div>
+
+    <main class="max-w-5xl mx-auto px-4 py-6 sm:py-8">
+      <slot />
+    </main>
+
+    <footer class="border-t border-brand-800 mt-12 py-6 text-center text-xs text-slate-700 px-4">
+      Polla Mundial 2026 &middot; Réferi: Harold &middot; No es democracia, es competición ⚽
+    </footer>
+
+  </body>
+</html>

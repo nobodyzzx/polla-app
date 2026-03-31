@@ -1,0 +1,904 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import { supabase, supabaseAdmin } from '@/lib/supabase';
+import { betaNow } from '@/lib/betaTime';
+
+const accessToken = Astro.cookies.get('sb-access-token')?.value;
+const refreshToken = Astro.cookies.get('sb-refresh-token')?.value;
+if (!accessToken || !refreshToken) { Astro.cookies.delete("sb-access-token", { path: "/" }); Astro.cookies.delete("sb-refresh-token", { path: "/" }); return Astro.redirect("/login"); }
+
+const { data: { user } } = await supabase.auth.setSession({
+  access_token: accessToken,
+  refresh_token: refreshToken,
+});
+if (!user) { Astro.cookies.delete("sb-access-token", { path: "/" }); Astro.cookies.delete("sb-refresh-token", { path: "/" }); return Astro.redirect("/login"); }
+
+const { data: profile } = await supabase
+  .from('profiles')
+  .select('es_referi, username, puntos_totales')
+  .eq('id', user.id)
+  .single();
+
+if (!profile?.es_referi) return Astro.redirect('/dashboard');
+
+const { data: matches } = await supabase
+  .from('matches')
+  .select('*')
+  .eq('is_finished', false)
+  .order('match_date', { ascending: true })
+  .limit(20);
+
+const { data: finishedMatches } = await supabase
+  .from('matches')
+  .select('*')
+  .eq('is_finished', true)
+  .order('match_date', { ascending: false })
+  .limit(10);
+
+const { data: profiles } = await supabase
+  .from('profiles')
+  .select('*')
+  .order('expulsado', { ascending: true })
+  .order('puntos_totales', { ascending: false });
+
+// ── RESUMEN DE JORNADA ──────────────────────────────────────────
+// El resumen siempre muestra la ÚLTIMA jornada con partidos terminados
+// (independiente de si hay partidos futuros pendientes).
+const nowTs = Date.now();
+
+const { data: lastFinished } = await supabaseAdmin
+  .from('matches')
+  .select('jornada, match_date')
+  .eq('is_finished', true)
+  .order('match_date', { ascending: false })
+  .limit(1)
+  .single();
+
+const activeJornada = lastFinished?.jornada ?? null;
+
+const { data: summaryMatches } = activeJornada ? await supabaseAdmin
+  .from('matches')
+  .select('id, home_team, away_team, match_date, jornada, stage, round, home_score, away_score, home_pen, away_pen, winner_penalties, is_finished')
+  .eq('jornada', activeJornada)
+  .order('match_date', { ascending: true }) : { data: [] };
+
+const summaryMatchIds = (summaryMatches ?? []).map((m: any) => m.id);
+const jornadaName = activeJornada;
+
+// Predicciones de todos los jugadores para los partidos de hoy
+const { data: summaryPredictions } = summaryMatchIds.length > 0
+  ? await supabaseAdmin
+      .from('predictions')
+      .select('user_id, match_id, user_home, user_away, user_home_pen, user_away_pen, points_earned')
+      .in('match_id', summaryMatchIds)
+  : { data: [] };
+
+// predsByMatch: matchId → predictions[]
+const predsByMatch = new Map<string, any[]>();
+for (const p of summaryPredictions ?? []) {
+  const arr = predsByMatch.get(p.match_id) ?? [];
+  arr.push(p);
+  predsByMatch.set(p.match_id, arr);
+}
+
+// profileMap: id → profile
+const profileMap = new Map<string, any>();
+for (const p of profiles ?? []) profileMap.set(p.id, p);
+
+// Jugadores sin réferi (participantes activos)
+const participants = (profiles ?? []).filter((p: any) => !p.es_referi && !p.expulsado);
+
+// Totales del día por usuario (solo partidos terminados)
+const userDailyPoints = new Map<string, number>();
+for (const p of summaryPredictions ?? []) {
+  if (p.points_earned !== null) {
+    userDailyPoints.set(p.user_id, (userDailyPoints.get(p.user_id) ?? 0) + p.points_earned);
+  }
+}
+const hasDailyResults = (summaryMatches ?? []).some((m: any) => m.is_finished);
+
+// Color por puntos
+function ptColor(pts: number | null) {
+  if (pts === null) return '#64748b';
+  if (pts >= 6) return '#d4af37';
+  if (pts >= 4) return '#4ade80';
+  if (pts >= 2) return '#facc15';
+  if (pts >= 1) return '#94a3b8';
+  return '#ef4444';
+}
+
+// Configuración general
+const { data: settingsRows } = await supabaseAdmin.from('settings').select('key, value');
+const settings = new Map((settingsRows ?? []).map((r: any) => [r.key, r.value]));
+const pagosDeadline70: string = settings.get('pagos_deadline_70') ?? '';
+const pagosDeadline50: string = settings.get('pagos_deadline_50') ?? '';
+
+function deadlineStatus(iso: string) {
+  if (!iso) return null;
+  return new Date(iso) < new Date() ? 'vencido' : 'activo';
+}
+
+// Última sincronización: partido terminado más recientemente actualizado
+const { data: lastSyncedMatch } = await supabaseAdmin
+  .from('matches')
+  .select('home_team, away_team, home_score, away_score, match_date')
+  .eq('is_finished', true)
+  .order('match_date', { ascending: false })
+  .limit(1)
+  .maybeSingle();
+
+// Sanciones activas — para saber qué botones deshabilitar
+const { data: activeSanctions } = await supabaseAdmin
+  .from('sanctions')
+  .select('id, user_id, type')
+  .eq('active', true);
+
+type SanctionEntry = { id: string; type: string };
+const sanctionsByUser = new Map<string, SanctionEntry[]>();
+for (const s of activeSanctions ?? []) {
+  const arr = sanctionsByUser.get(s.user_id) ?? [];
+  arr.push({ id: s.id, type: s.type });
+  sanctionsByUser.set(s.user_id, arr);
+}
+
+function formatDate(d: string) {
+  return new Date(d).toLocaleString('es-BO', {
+    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+    timeZone: 'America/La_Paz',
+  });
+}
+---
+
+<Layout title="Panel Réferi" navProfile={profile} isAuthed={true}>
+  <div class="space-y-8">
+
+    <!-- Header -->
+    <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <h1 class="font-display text-4xl text-white tracking-wide">⚖️ PANEL DEL RÉFERI</h1>
+      <span class="text-sm text-gold bg-gold/10 border border-gold/30 px-3 py-2 rounded-full self-start sm:self-auto">
+        {profile.username}
+      </span>
+    </div>
+
+    <!-- ── API DE FÚTBOL ── -->
+    <section class="space-y-3">
+      <h2 class="font-display text-2xl text-white tracking-wide border-b border-brand-800 pb-2">
+        🌐 API DE FÚTBOL
+      </h2>
+      <div class="bg-brand-900 border border-brand-700/60 rounded-2xl p-4 space-y-4">
+
+        <div class="text-xs text-slate-500 space-y-1">
+          <span class="text-slate-400">Códigos de torneo:</span>
+          <span class="block">WC = Mundial · CL = Champions · PL = Premier · PD = La Liga · SA = Serie A</span>
+        </div>
+
+        <button id="btn-check-api"
+          class="w-full bg-brand-800/40 border border-brand-700/40 text-slate-500 text-xs px-3 py-2 rounded-xl transition active:bg-brand-700 text-left">
+          🔍 Ver torneos disponibles en mi plan →
+        </button>
+        <div id="api-competitions" class="hidden text-xs space-y-1 max-h-40 overflow-y-auto"></div>
+
+        <div class="flex gap-2">
+          <input id="api-code" type="text" placeholder="Código (ej: CL)" maxlength="10"
+            class="flex-1 bg-brand-800 border border-brand-700 rounded-xl px-3 py-2.5 text-white text-sm uppercase focus:outline-none focus:border-gold transition" />
+          <input id="api-season" type="number" placeholder="Temporada" min="2020" max="2030"
+            class="w-28 bg-brand-800 border border-brand-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-gold transition" />
+        </div>
+
+        <div class="grid grid-cols-2 gap-2">
+          <form method="POST" action="/api/admin/import-fixture" id="form-import">
+            <input type="hidden" name="code"   id="import-code" />
+            <input type="hidden" name="season" id="import-season" />
+            <button type="submit"
+              class="w-full bg-brand-800 border border-brand-700 text-slate-300 text-sm font-semibold px-3 py-3 rounded-xl transition active:bg-brand-700 min-h-[48px]">
+              📥 Importar Fixture
+            </button>
+          </form>
+          <form method="POST" action="/api/admin/sync-scores" id="form-sync">
+            <input type="hidden" name="code"   id="sync-code" />
+            <input type="hidden" name="season" id="sync-season" />
+            <button type="submit"
+              class="w-full bg-gold/10 border border-gold/40 text-gold text-sm font-semibold px-3 py-3 rounded-xl transition active:bg-gold/20 min-h-[48px]">
+              🔄 Sync Scores
+            </button>
+          </form>
+        </div>
+
+        <div class="border-t border-brand-800 pt-3">
+          <button id="btn-run-tests"
+            class="w-full bg-brand-800/40 border border-brand-700/40 text-slate-400 text-sm font-semibold px-3 py-3 rounded-xl transition active:bg-brand-700 min-h-[48px]">
+            🧪 Correr Tests del Reglamento
+          </button>
+          <div id="test-results" class="hidden mt-3 space-y-1.5"></div>
+        </div>
+
+        <div class="border-t border-brand-800 pt-3 grid grid-cols-3 gap-2">
+          <div class="space-y-1">
+            <form method="POST" action="/api/admin/seed-demo" id="form-seed">
+              <button type="submit"
+                class="w-full bg-brand-800/60 border border-brand-600/50 text-slate-400 text-sm font-semibold px-2 py-3 rounded-xl transition active:bg-brand-700 min-h-[48px]">
+                🧪 Datos de Prueba
+              </button>
+            </form>
+            <p class="text-xs text-slate-600 text-center">2 grupos + elim.</p>
+          </div>
+          <div class="space-y-1">
+            <form method="POST" action="/api/admin/simulate" id="form-simulate">
+              <button type="submit"
+                class="w-full bg-brand-700/50 border border-brand-600/60 text-slate-300 text-sm font-semibold px-2 py-3 rounded-xl transition active:bg-brand-600 min-h-[48px]">
+                🎲 Simular Juego
+              </button>
+            </form>
+            <p class="text-xs text-slate-600 text-center">Pronósticos aleatorios</p>
+          </div>
+          <div class="space-y-1">
+            <form method="POST" action="/api/admin/clear-matches" id="form-clear">
+              <button type="submit"
+                class="w-full bg-fifared/8 border border-fifared/30 text-fifared text-sm font-semibold px-2 py-3 rounded-xl transition active:bg-fifared/20 min-h-[48px]">
+                🗑️ Limpiar Todo
+              </button>
+            </form>
+            <p class="text-xs text-slate-600 text-center">Resetea todo</p>
+          </div>
+          <div class="space-y-1">
+            <a href="/admin/usuarios"
+              class="flex items-center justify-center w-full bg-brand-800 border border-brand-700 text-slate-300 text-sm font-semibold px-2 py-3 rounded-xl transition hover:border-brand-600 min-h-[48px]">
+              👥 Usuarios
+            </a>
+            <p class="text-xs text-slate-600 text-center">Crear / eliminar</p>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ── RESULTADOS ── -->
+    <section class="space-y-4">
+
+      {import.meta.env.PUBLIC_BETA === 'true' ? (
+        /* ── BETA: sección prominente y expandida ── */
+        <div class="space-y-4">
+          <div class="flex items-center justify-between border-b border-amber-500/40 pb-2">
+            <h2 class="font-display text-2xl text-amber-400 tracking-wide">🧪 SIMULAR RESULTADOS</h2>
+            <span class="text-xs bg-amber-500/15 border border-amber-500/30 text-amber-300 px-2 py-1 rounded-full">
+              Beta · {betaNow().toLocaleDateString('es-BO', { day: 'numeric', month: 'short', timeZone: 'America/La_Paz' })} (simulado)
+            </span>
+          </div>
+          <p class="text-xs text-amber-400/60">
+            Ingresá resultados para simular la polla. Los puntos se calculan automáticamente.
+          </p>
+
+          {(!matches || matches.length === 0) && (
+            <p class="text-slate-600 text-sm">No hay partidos pendientes.</p>
+          )}
+
+          <div class="flex flex-col gap-4">
+            {(matches ?? []).map((m: any) => (
+              <form method="POST" action="/api/admin/score"
+                class="bg-brand-900 border border-amber-500/20 rounded-2xl p-4 space-y-4">
+                <input type="hidden" name="matchId" value={m.id} />
+                <div>
+                  <div class="text-xs text-slate-500 uppercase tracking-wide mb-1">
+                    {m.stage === 'group' ? `Grupo ${m.group_name}` : m.round}
+                    {m.jornada && <span class="ml-1 text-brand-600">· {m.jornada}</span>}
+                    <span class="ml-2 text-slate-500">· {formatDate(m.match_date)}</span>
+                  </div>
+                  <div class="font-semibold text-white text-base">
+                    {m.home_team} <span class="text-slate-500">vs</span> {m.away_team}
+                  </div>
+                </div>
+                <div class="flex items-center gap-2">
+                  <div class="flex-1 text-center space-y-1">
+                    <span class="text-xs text-slate-500 block truncate">{m.home_team}</span>
+                    <input type="number" name="homeScore" min="0" max="20" required placeholder="0"
+                      class="w-full bg-brand-800 border border-brand-700 rounded-xl px-2 py-4 text-white text-2xl font-display text-center focus:outline-none focus:border-gold transition" />
+                  </div>
+                  <span class="text-brand-600 text-xl flex-shrink-0">—</span>
+                  <div class="flex-1 text-center space-y-1">
+                    <span class="text-xs text-slate-500 block truncate">{m.away_team}</span>
+                    <input type="number" name="awayScore" min="0" max="20" required placeholder="0"
+                      class="w-full bg-brand-800 border border-brand-700 rounded-xl px-2 py-4 text-white text-2xl font-display text-center focus:outline-none focus:border-gold transition" />
+                  </div>
+                </div>
+                {m.stage === 'knockout' && (
+                  <div class="space-y-1">
+                    <span class="text-xs text-gold block">Penales (si empate):</span>
+                    <div class="flex items-center gap-2">
+                      <input type="number" name="homePen" min="0" max="20" placeholder="–"
+                        class="flex-1 bg-gold/10 border border-gold/40 rounded-xl px-2 py-3 text-gold text-xl font-display text-center focus:outline-none focus:border-gold transition placeholder:text-gold/30" />
+                      <span class="text-gold/40 text-lg flex-shrink-0">–</span>
+                      <input type="number" name="awayPen" min="0" max="20" placeholder="–"
+                        class="flex-1 bg-gold/10 border border-gold/40 rounded-xl px-2 py-3 text-gold text-xl font-display text-center focus:outline-none focus:border-gold transition placeholder:text-gold/30" />
+                    </div>
+                  </div>
+                )}
+                <button type="submit"
+                  class="w-full bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 text-sm font-bold px-4 py-3 rounded-xl transition min-h-[48px]">
+                  Simular resultado ✅
+                </button>
+              </form>
+            ))}
+          </div>
+        </div>
+
+      ) : (
+        /* ── PRODUCCIÓN: colapsable como antes ── */
+        <div class="space-y-4">
+          <button id="toggle-manual"
+            class="w-full flex items-center justify-between border-b border-brand-800 pb-2 group">
+            <h2 class="font-display text-2xl text-white tracking-wide">📊 CARGA MANUAL</h2>
+            <span id="toggle-manual-icon" class="text-slate-500 text-sm transition">▼ mostrar</span>
+          </button>
+          <p class="text-xs text-slate-600 -mt-2">Respaldo por si la API falla. Normalmente usar 🔄 Sync Scores.</p>
+          <div id="manual-section" class="hidden space-y-4">
+
+            {(!matches || matches.length === 0) && (
+              <p class="text-slate-600 text-sm">No hay partidos pendientes de resultado.</p>
+            )}
+
+            <div class="flex flex-col gap-4">
+              {(matches ?? []).map((m: any) => (
+                <form method="POST" action="/api/admin/score"
+                  class="bg-brand-900 border border-brand-700/60 rounded-2xl p-4 space-y-4">
+                  <input type="hidden" name="matchId" value={m.id} />
+                  <div>
+                    <div class="text-xs text-slate-500 uppercase tracking-wide mb-1">
+                      {m.stage === 'group' ? `Grupo ${m.group_name}` : m.round}
+                      {m.jornada && <span class="ml-1 text-brand-600">· {m.jornada}</span>}
+                      <span class="ml-2 text-slate-500">· {formatDate(m.match_date)}</span>
+                    </div>
+                    <div class="font-semibold text-white text-base">
+                      {m.home_team} <span class="text-slate-500">vs</span> {m.away_team}
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <div class="flex-1 text-center space-y-1">
+                      <span class="text-xs text-slate-500 block truncate">{m.home_team}</span>
+                      <input type="number" name="homeScore" min="0" max="20" required placeholder="0"
+                        class="w-full bg-brand-800 border border-brand-700 rounded-xl px-2 py-4 text-white text-2xl font-display text-center focus:outline-none focus:border-gold transition" />
+                    </div>
+                    <span class="text-brand-600 text-xl flex-shrink-0">—</span>
+                    <div class="flex-1 text-center space-y-1">
+                      <span class="text-xs text-slate-500 block truncate">{m.away_team}</span>
+                      <input type="number" name="awayScore" min="0" max="20" required placeholder="0"
+                        class="w-full bg-brand-800 border border-brand-700 rounded-xl px-2 py-4 text-white text-2xl font-display text-center focus:outline-none focus:border-gold transition" />
+                    </div>
+                  </div>
+                  {m.stage === 'knockout' && (
+                    <div class="space-y-1">
+                      <span class="text-xs text-gold block">Score penales (si aplica):</span>
+                      <div class="flex items-center gap-2">
+                        <div class="flex-1 text-center space-y-1">
+                          <span class="text-xs text-slate-500 block truncate">{m.home_team}</span>
+                          <input type="number" name="homePen" min="0" max="20" placeholder="–"
+                            class="w-full bg-gold/10 border border-gold/40 rounded-xl px-2 py-3 text-gold text-xl font-display text-center focus:outline-none focus:border-gold transition placeholder:text-gold/30" />
+                        </div>
+                        <span class="text-gold/40 text-lg flex-shrink-0">–</span>
+                        <div class="flex-1 text-center space-y-1">
+                          <span class="text-xs text-slate-500 block truncate">{m.away_team}</span>
+                          <input type="number" name="awayPen" min="0" max="20" placeholder="–"
+                            class="w-full bg-gold/10 border border-gold/40 rounded-xl px-2 py-3 text-gold text-xl font-display text-center focus:outline-none focus:border-gold transition placeholder:text-gold/30" />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  <button type="submit"
+                    class="w-full bg-gol text-white text-sm font-bold px-4 py-3 rounded-xl transition active:bg-gol-hover min-h-[48px]">
+                    Guardar y Calcular ✅
+                  </button>
+                </form>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
+
+    <!-- ── VAR: TARJETAS ── -->
+    <section class="space-y-4">
+      <h2 class="font-display text-2xl text-white tracking-wide border-b border-brand-800 pb-2">
+        🟨 VAR: SANCIONES
+      </h2>
+      <div class="flex flex-col gap-4">
+        {(profiles ?? []).filter((p: any) => !p.es_referi).map((p: any) => {
+          const isExpulsado = p.expulsado === true;
+          const userSanctions = sanctionsByUser.get(p.id) ?? [];
+          const hasActiveRed = userSanctions.some(s => s.type === 'red' || s.type === 'double_red');
+          return (
+          <div class={`bg-brand-900 border rounded-2xl p-4 space-y-3 ${isExpulsado ? 'border-fifared-dark/40' : 'border-brand-700/60'}`}>
+
+            {/* — Header: nombre + puntos + estado — */}
+            <div class="flex items-center gap-3 flex-wrap">
+              <span class={`font-semibold text-base ${isExpulsado ? 'text-slate-500 line-through' : 'text-white'}`}>{p.username}</span>
+              <span class="text-gold text-base font-display">{p.puntos_totales} pts</span>
+              {isExpulsado
+                ? <span class="text-xs px-2 py-1 rounded-full border bg-fifared-dark/20 border-fifared-dark/50 text-red-400">🟥🟥 Expulsado</span>
+                : <span class={`text-xs px-2 py-1 rounded-full border ${p.pago_70 && p.pago_50 ? 'bg-gol/10 border-gol/30 text-gol' : 'bg-fifared/10 border-fifared/30 text-fifared'}`}>
+                    {p.pago_70 && p.pago_50 ? '✅ Pagado' : p.pago_70 ? '⏳ Parcial' : '❌ Pendiente'}
+                  </span>
+              }
+            </div>
+
+            {/* — Tarjetas activas con botón de undo — */}
+            {userSanctions.length > 0 && (
+              <div class="flex flex-col gap-1.5">
+                <span class="text-xs text-slate-500 uppercase tracking-wide">Sanciones activas</span>
+                {userSanctions.map(s => {
+                  const label = s.type === 'yellow' ? 'Amarilla' : s.type === 'red' ? 'Roja (jornada anulada)' : 'Doble roja (expulsado)';
+                  const icon  = s.type === 'yellow' ? '🟨' : '🟥';
+                  const color = s.type === 'yellow' ? 'border-amarilla/30 text-amarilla' : 'border-fifared/40 text-fifared';
+                  return (
+                    <form method="POST" action="/api/admin/undo-sanction" class="flex items-center gap-2">
+                      <input type="hidden" name="sanctionId" value={s.id} />
+                      <div class={`flex-1 flex items-center gap-2 text-xs px-3 py-2 rounded-xl border bg-brand-800/60 ${color}`}>
+                        <span>{icon}</span>
+                        <span class="font-semibold">{label}</span>
+                      </div>
+                      <button type="submit"
+                        onclick="return confirm('¿Anular esta sanción? Se recalcularán los puntos.')"
+                        class="text-xs px-3 py-2 rounded-xl border border-brand-600/50 bg-brand-800 text-slate-400 active:bg-brand-700 transition flex-shrink-0">
+                        Anular ↩
+                      </button>
+                    </form>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* — Botones de sanción — */}
+            <div class="grid grid-cols-3 gap-2">
+              <form method="POST" action="/api/admin/sanction">
+                <input type="hidden" name="userId" value={p.id} />
+                <input type="hidden" name="type" value="yellow" />
+                <input type="hidden" name="reason" value="Advertencia del réferi" />
+                <button type="submit" disabled={isExpulsado}
+                  class={`w-full text-sm font-semibold px-2 py-3 rounded-xl transition min-h-[48px] ${isExpulsado ? 'bg-brand-800/40 border border-brand-700/30 text-slate-600 cursor-not-allowed' : 'bg-amarilla/10 border border-amarilla/40 text-amarilla active:bg-amarilla/20'}`}>
+                  🟨 Amarilla
+                </button>
+              </form>
+              <form method="POST" action="/api/admin/sanction">
+                <input type="hidden" name="userId" value={p.id} />
+                <input type="hidden" name="type" value="red" />
+                <input type="hidden" name="reason" value="Tarjeta roja — jornada anulada" />
+                <button type="submit" disabled={isExpulsado || hasActiveRed}
+                  class={`w-full text-sm font-semibold px-2 py-3 rounded-xl transition min-h-[48px] ${isExpulsado || hasActiveRed ? 'bg-brand-800/40 border border-brand-700/30 text-slate-600 cursor-not-allowed' : 'bg-fifared/10 border border-fifared/40 text-fifared active:bg-fifared/20'}`}>
+                  🟥 Roja
+                </button>
+              </form>
+              <form method="POST" action="/api/admin/sanction">
+                <input type="hidden" name="userId" value={p.id} />
+                <input type="hidden" name="type" value="double_red" />
+                <input type="hidden" name="reason" value="Doble roja — expulsión definitiva" />
+                <button type="submit" disabled={isExpulsado}
+                  onclick="return confirm('¿Expulsión definitiva?')"
+                  class={`w-full text-sm font-semibold px-2 py-3 rounded-xl transition min-h-[48px] ${isExpulsado ? 'bg-brand-800/40 border border-brand-700/30 text-slate-600 cursor-not-allowed' : 'bg-fifared-dark/20 border border-fifared-dark/50 text-red-300 active:bg-fifared-dark/40'}`}>
+                  🟥🟥 2ª Roja
+                </button>
+              </form>
+            </div>
+
+            {/* — Pago — */}
+            <div class="grid grid-cols-2 gap-2">
+              <form method="POST" action="/api/admin/payment">
+                <input type="hidden" name="userId" value={p.id} />
+                <input type="hidden" name="pago70" value={p.pago_70 ? 'false' : 'true'} />
+                <input type="hidden" name="pago50" value={p.pago_70 ? 'false' : p.pago_50.toString()} />
+                <button type="submit"
+                  class={`w-full text-sm px-3 py-3 rounded-xl border transition min-h-[48px] ${p.pago_70 ? 'bg-gol/10 border-gol/40 text-gol font-semibold' : 'bg-brand-800 border-brand-700 text-slate-400'}`}>
+                  {p.pago_70 ? '✓ 70 Bs' : '💰 70 Bs'}
+                </button>
+              </form>
+              <form method="POST" action="/api/admin/payment">
+                <input type="hidden" name="userId" value={p.id} />
+                <input type="hidden" name="pago70" value="true" />
+                <input type="hidden" name="pago50" value={p.pago_50 ? 'false' : 'true'} />
+                <button type="submit" disabled={!p.pago_70}
+                  class={`w-full text-sm px-3 py-3 rounded-xl border transition min-h-[48px] ${!p.pago_70 ? 'bg-brand-800/40 border-brand-700/30 text-slate-600 cursor-not-allowed' : p.pago_50 ? 'bg-gol/10 border-gol/40 text-gol font-semibold' : 'bg-brand-800 border-brand-700 text-slate-400'}`}>
+                  {p.pago_50 ? '✓ 50 Bs' : '💰 50 Bs'}
+                </button>
+              </form>
+            </div>
+
+          </div>
+        );
+      })}
+      </div>
+    </section>
+
+    <!-- ── RESUMEN DE JORNADA ── -->
+    {summaryMatches && summaryMatches.length > 0 && (
+      <section class="space-y-4">
+        <h2 class="font-display text-2xl text-white tracking-wide border-b border-brand-800 pb-2">
+          📋 RESUMEN: {jornadaName ?? 'HOY'}
+        </h2>
+
+        {(summaryMatches as any[]).map((m: any) => {
+          const preds = predsByMatch.get(m.id) ?? [];
+          const predictedIds = new Set(preds.map((p: any) => p.user_id));
+          const missing = participants.filter((p: any) => !predictedIds.has(p.id));
+          const sortedPreds = m.is_finished
+            ? [...preds].sort((a: any, b: any) => (b.points_earned ?? -1) - (a.points_earned ?? -1))
+            : [...preds].sort((a: any, b: any) => (profileMap.get(a.user_id)?.username ?? '').localeCompare(profileMap.get(b.user_id)?.username ?? ''));
+          return (
+          <div class="bg-brand-900 border border-brand-700/60 rounded-2xl p-4 space-y-3">
+
+            {/* Cabecera del partido */}
+            <div class="flex items-start justify-between gap-2">
+              <div>
+                <div class="text-xs text-slate-500 uppercase tracking-wide mb-0.5">
+                  {m.stage === 'group' ? `Grupo` : m.round}
+                </div>
+                <div class="font-semibold text-white">
+                  {m.home_team} <span class="text-slate-500">vs</span> {m.away_team}
+                </div>
+              </div>
+              <div class="text-right flex-shrink-0">
+                {m.is_finished
+                  ? <span class="font-display text-2xl text-gold">{m.home_score}–{m.away_score}{m.winner_penalties && <span class="text-xs text-slate-400 ml-1">(pen)</span>}</span>
+                  : <span class="text-xs text-slate-500">{formatDate(m.match_date)}</span>
+                }
+              </div>
+            </div>
+
+            {/* Tabla de pronósticos */}
+            {preds.length === 0 ? (
+              <p class="text-xs text-slate-500 italic">Sin pronósticos registrados</p>
+            ) : (
+              <div class="overflow-x-auto -mx-4 px-4">
+                <table class="w-full text-sm">
+                  <thead>
+                    <tr class="text-xs text-slate-500 uppercase border-b border-brand-800">
+                      <th class="text-left pb-2 pr-3 font-medium">Jugador</th>
+                      <th class="text-center pb-2 px-2 font-medium">Pronóstico</th>
+                      {m.is_finished && <th class="text-right pb-2 pl-2 font-medium">Pts</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sortedPreds.map((pred: any) => {
+                      const u = profileMap.get(pred.user_id);
+                      const pts = pred.points_earned;
+                      return (
+                        <tr class="border-b border-brand-800/30">
+                          <td class="py-2 pr-3 text-slate-300 font-medium">{u?.username ?? '?'}</td>
+                          <td class="py-2 px-2 text-center">
+                            <span class="font-display text-white text-base">{pred.user_home}–{pred.user_away}</span>
+                            {pred.user_home_pen !== null && (
+                              <span class="text-gold text-xs ml-1.5">({pred.user_home_pen}–{pred.user_away_pen})</span>
+                            )}
+                          </td>
+                          {m.is_finished && (
+                            <td class="py-2 pl-2 text-right">
+                              <span class="font-display text-lg font-bold" style={`color:${ptColor(pts)}`}>
+                                {pts ?? '–'}
+                              </span>
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Sin pronóstico */}
+            {missing.length > 0 && (
+              <div class="flex flex-wrap gap-1.5 pt-1">
+                <span class="text-xs text-slate-500">Sin enviar:</span>
+                {missing.map((p: any) => (
+                  <span class="text-xs text-slate-400 bg-brand-800 px-2 py-0.5 rounded-full">{p.username}</span>
+                ))}
+              </div>
+            )}
+          </div>
+        );})}
+
+        {/* Totales del día */}
+        {hasDailyResults && userDailyPoints.size > 0 && (
+          <div class="bg-brand-900 border border-gold/25 rounded-2xl p-4 space-y-3">
+            <h3 class="font-display text-lg text-gold tracking-wide">PUNTOS DEL DÍA</h3>
+            <div class="space-y-1.5">
+              {[...userDailyPoints.entries()]
+                .sort(([, a], [, b]) => b - a)
+                .map(([userId, pts], i) => {
+                  const u = profileMap.get(userId);
+                  return (
+                    <div class="flex items-center justify-between py-1">
+                      <div class="flex items-center gap-2">
+                        <span class="text-xs text-slate-500 w-5 text-right">{i + 1}.</span>
+                        <span class="text-sm text-slate-200">{u?.username ?? '?'}</span>
+                      </div>
+                      <span class="font-display text-2xl" style={`color:${ptColor(pts)}`}>
+                        {pts} <span class="text-xs text-slate-500 font-sans">pts</span>
+                      </span>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+        )}
+      </section>
+    )}
+
+    <!-- ── RESULTADOS RECIENTES ── -->
+    {finishedMatches && finishedMatches.length > 0 && (
+      <section class="space-y-3">
+        <h2 class="font-display text-2xl text-white tracking-wide border-b border-brand-800 pb-2">
+          ✅ RESULTADOS CARGADOS
+        </h2>
+        <div class="flex flex-col gap-2">
+          {finishedMatches.map((m: any) => (
+            <div class="bg-brand-900/60 border border-brand-800/40 rounded-xl px-4 py-3 flex items-center justify-between gap-2 text-sm">
+              <span class="text-slate-400 flex-1 min-w-0 truncate">{m.home_team} vs {m.away_team}</span>
+              <span class="font-display text-lg text-white flex-shrink-0">
+                {m.home_score} – {m.away_score}
+                {m.winner_penalties && <span class="text-gold text-xs ml-2">(pen: {m.winner_penalties})</span>}
+              </span>
+            </div>
+          ))}
+        </div>
+      </section>
+    )}
+
+    <!-- ── CONFIGURACIÓN ── -->
+    <section class="space-y-3">
+      <h2 class="font-display text-2xl text-white tracking-wide border-b border-brand-800 pb-2">
+        ⚙️ CONFIGURACIÓN
+      </h2>
+
+      <!-- Cron status -->
+      <div class="bg-brand-900 border border-brand-700/60 rounded-2xl p-4 space-y-3">
+        <div class="flex items-center justify-between">
+          <span class="text-sm font-semibold text-slate-300">🔄 Sync automático</span>
+          <span class="text-xs text-slate-500 bg-brand-800 border border-brand-700 px-2 py-1 rounded-full font-mono">
+            */5 11-23 * * *
+          </span>
+        </div>
+        <p class="text-xs text-slate-600">
+          El cron se activa deployando la app y ejecutando la migración
+          <code class="text-slate-500 bg-brand-800 px-1 rounded">20260101000008_cron_sync.sql</code>
+          en DataGrip con la URL de producción.
+        </p>
+        {lastSyncedMatch && (
+          <div class="text-xs text-slate-500 border-t border-brand-800 pt-2">
+            Último resultado cargado:
+            <span class="text-slate-300 ml-1">
+              {lastSyncedMatch.home_team} {lastSyncedMatch.home_score}–{lastSyncedMatch.away_score} {lastSyncedMatch.away_team}
+            </span>
+          </div>
+        )}
+      </div>
+
+      <div class="bg-brand-900 border border-brand-700/60 rounded-2xl p-4">
+        <form method="POST" action="/api/admin/save-settings" class="space-y-5">
+          <p class="text-xs text-slate-600">
+            Cuando se supere cada fecha, el botón "Compartir pagos" del dashboard se desactiva automáticamente.
+          </p>
+
+          <!-- 1er pago -->
+          <div class="space-y-1.5">
+            <label class="text-xs text-slate-400 uppercase tracking-wide font-semibold">
+              1er Pago — 70 Bs
+            </label>
+            <div class="flex items-center gap-3 flex-wrap">
+              <input type="datetime-local" name="pagos_deadline_70"
+                value={pagosDeadline70}
+                class="bg-brand-800 border border-brand-700 text-slate-200 text-sm rounded-xl px-3 py-2.5 focus:outline-none focus:border-gold transition" />
+              {pagosDeadline70 && (
+                <span class={`text-xs font-semibold px-2 py-1 rounded-full border ${
+                  deadlineStatus(pagosDeadline70) === 'vencido'
+                    ? 'text-fifared border-fifared/30 bg-fifared/10'
+                    : 'text-gol border-gol/30 bg-gol/10'
+                }`}>
+                  {deadlineStatus(pagosDeadline70) === 'vencido' ? '🔒 Vencido' : '✅ Activo'}
+                </span>
+              )}
+            </div>
+          </div>
+
+          <!-- 2do pago -->
+          <div class="space-y-1.5">
+            <label class="text-xs text-slate-400 uppercase tracking-wide font-semibold">
+              2do Pago — 50 Bs
+            </label>
+            <div class="flex items-center gap-3 flex-wrap">
+              <input type="datetime-local" name="pagos_deadline_50"
+                value={pagosDeadline50}
+                class="bg-brand-800 border border-brand-700 text-slate-200 text-sm rounded-xl px-3 py-2.5 focus:outline-none focus:border-gold transition" />
+              {pagosDeadline50 && (
+                <span class={`text-xs font-semibold px-2 py-1 rounded-full border ${
+                  deadlineStatus(pagosDeadline50) === 'vencido'
+                    ? 'text-fifared border-fifared/30 bg-fifared/10'
+                    : 'text-gol border-gol/30 bg-gol/10'
+                }`}>
+                  {deadlineStatus(pagosDeadline50) === 'vencido' ? '🔒 Vencido' : '✅ Activo'}
+                </span>
+              )}
+            </div>
+          </div>
+
+          <button type="submit"
+            class="bg-brand-700 hover:bg-brand-600 border border-brand-600 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition min-h-[44px]">
+            Guardar configuración
+          </button>
+        </form>
+      </div>
+
+      <!-- Modo de la app -->
+      <div class={`border rounded-2xl p-4 space-y-3 ${import.meta.env.PUBLIC_BETA === 'true' ? 'bg-amber-500/10 border-amber-500/40' : 'bg-gol/10 border-gol/30'}`}>
+        <div class="flex items-center justify-between">
+          <span class="text-sm font-semibold text-slate-300">
+            {import.meta.env.PUBLIC_BETA === 'true' ? '🚧 Modo actual: VERSIÓN DE PRUEBA' : '🚀 Modo actual: VERSIÓN OFICIAL'}
+          </span>
+          <span class={`text-xs px-2 py-1 rounded-full font-mono border ${import.meta.env.PUBLIC_BETA === 'true' ? 'bg-amber-500/20 border-amber-500/40 text-amber-300' : 'bg-gol/20 border-gol/30 text-green-300'}`}>
+            PUBLIC_BETA={import.meta.env.PUBLIC_BETA ?? 'false'}
+          </span>
+        </div>
+        {import.meta.env.PUBLIC_BETA === 'true' ? (
+          <div class="space-y-3">
+            <p class="text-xs text-slate-500">
+              En versión de prueba los jugadores pueden pronosticar sin importar si pagaron. Al lanzar la versión oficial se borran <strong class="text-slate-400">todos los pronósticos y puntos</strong>. Los pagos se conservan.
+            </p>
+            <p class="text-xs text-amber-400/80">
+              Después del reset: cambiá <code class="bg-brand-800 px-1 rounded">PUBLIC_BETA=false</code> en <code class="bg-brand-800 px-1 rounded">.env</code> y redesplegá la app.
+            </p>
+            <form method="POST" action="/api/admin/launch-official"
+              onsubmit="return confirm('¿Confirmas el lanzamiento oficial? Se borrarán TODOS los pronósticos y puntos. Esta acción no se puede deshacer.')">
+              <button type="submit"
+                class="bg-fifared/20 hover:bg-fifared/30 border border-fifared/50 text-red-300 text-sm font-bold px-5 py-2.5 rounded-xl transition min-h-[44px] w-full">
+                🚀 Lanzar versión oficial y resetear todo
+              </button>
+            </form>
+          </div>
+        ) : (
+          <p class="text-xs text-slate-500">
+            La app está en modo oficial. Los pronósticos están bloqueados para jugadores que no hayan completado ambos pagos.
+          </p>
+        )}
+      </div>
+    </section>
+
+  </div>
+</Layout>
+
+<script is:inline>
+  function initAdminForms() {
+    // Copiar league/season a los hidden fields de import y sync antes del submit
+    const codeInput   = document.getElementById('api-code');
+    const seasonInput = document.getElementById('api-season');
+
+    // Restaurar última configuración usada
+    const savedCode   = localStorage.getItem('api_code');
+    const savedSeason = localStorage.getItem('api_season');
+    if (savedCode   && codeInput)   codeInput.value   = savedCode;
+    if (savedSeason && seasonInput) seasonInput.value = savedSeason;
+
+    ['import', 'sync'].forEach(prefix => {
+      const form = document.getElementById(`form-${prefix}`);
+      if (!form) return;
+      form.addEventListener('submit', function() {
+        const code   = codeInput?.value?.toUpperCase() ?? '';
+        const season = seasonInput?.value ?? '';
+        document.getElementById(`${prefix}-code`).value   = code;
+        document.getElementById(`${prefix}-season`).value = season;
+        // Persistir para la próxima vez
+        if (code)   localStorage.setItem('api_code',   code);
+        if (season) localStorage.setItem('api_season', season);
+      });
+    });
+
+    // Toggle carga manual
+    const toggleBtn = document.getElementById('toggle-manual');
+    const manualSection = document.getElementById('manual-section');
+    const toggleIcon = document.getElementById('toggle-manual-icon');
+    if (toggleBtn && manualSection && !toggleBtn._toggleInit) {
+      toggleBtn._toggleInit = true;
+      toggleBtn.addEventListener('click', () => {
+        const hidden = manualSection.classList.toggle('hidden');
+        toggleIcon.textContent = hidden ? '▼ mostrar' : '▲ ocultar';
+      });
+    }
+
+    // Tests del reglamento
+    const btnTests = document.getElementById('btn-run-tests');
+    const testResultsDiv = document.getElementById('test-results');
+    if (btnTests && testResultsDiv && !btnTests._testsInit) {
+      btnTests._testsInit = true;
+      btnTests.addEventListener('click', async () => {
+        btnTests.textContent = '⏳ Corriendo tests…';
+        btnTests.disabled = true;
+        testResultsDiv.classList.remove('hidden');
+        testResultsDiv.innerHTML = '<p class="text-xs text-slate-500">Calculando…</p>';
+        try {
+          const res = await fetch('/api/admin/run-tests', { method: 'POST' });
+          const data = await res.json();
+          if (data.error) {
+            testResultsDiv.innerHTML = `<p class="text-xs text-fifared">${data.error}</p>`;
+          } else {
+            const allPass = data.passed === data.total;
+            testResultsDiv.innerHTML = `
+              <div class="flex items-center gap-2 px-3 py-2 rounded-xl border ${allPass ? 'border-gol/30 bg-gol/8 text-gol' : 'border-amarilla/30 bg-amarilla/8 text-amarilla'} text-sm font-semibold">
+                ${allPass ? '✅' : '⚠️'} ${data.passed}/${data.total} tests pasaron
+              </div>
+              ${data.tests.map((t) => `
+                <div class="flex items-start gap-2 px-3 py-2 rounded-lg ${t.passed ? 'bg-brand-800/30' : 'bg-fifared/8 border border-fifared/20'}">
+                  <span class="flex-shrink-0 text-xs mt-0.5">${t.passed ? '✅' : '❌'}</span>
+                  <div class="flex-1 min-w-0">
+                    <div class="text-xs font-semibold ${t.passed ? 'text-slate-300' : 'text-fifared'}">${t.name}</div>
+                    <div class="text-xs text-slate-500">${t.description}</div>
+                    ${!t.passed ? `<div class="text-xs text-fifared mt-0.5">esperado: ${t.expected} · obtenido: ${t.actual ?? 'null'} ${t.note ? '· ' + t.note : ''}</div>` : ''}
+                  </div>
+                  <span class="text-xs font-mono flex-shrink-0 ${t.passed ? 'text-slate-500' : 'text-fifared'}">${t.actual ?? '?'} pts</span>
+                </div>
+              `).join('')}
+            `;
+          }
+        } catch (e) {
+          testResultsDiv.innerHTML = `<p class="text-xs text-fifared">Error de red</p>`;
+        }
+        btnTests.textContent = '🧪 Correr Tests del Reglamento';
+        btnTests.disabled = false;
+      });
+    }
+
+    // Botón consultar torneos disponibles
+    const btnCheck = document.getElementById('btn-check-api');
+    const apiCompDiv = document.getElementById('api-competitions');
+    if (btnCheck && apiCompDiv && !btnCheck._checkInit) {
+      btnCheck._checkInit = true;
+      btnCheck.addEventListener('click', async () => {
+        btnCheck.textContent = '⏳ Consultando…';
+        btnCheck.disabled = true;
+        try {
+          const res = await fetch('/api/admin/check-api');
+          const data = await res.json();
+          if (data.error) {
+            apiCompDiv.innerHTML = `<span class="text-fifared">${data.error}</span>`;
+          } else {
+            apiCompDiv.innerHTML = data.competitions
+              .map((c) => `<div class="flex gap-2 py-0.5 border-b border-brand-800/40">
+                <span class="text-gold font-mono w-10 flex-shrink-0">${c.code}</span>
+                <span class="text-slate-300 flex-1">${c.name}</span>
+                <span class="text-slate-600">${c.area}</span>
+              </div>`)
+              .join('');
+          }
+          apiCompDiv.classList.remove('hidden');
+          btnCheck.textContent = '🔍 Ver torneos disponibles en mi plan →';
+          btnCheck.disabled = false;
+        } catch (e) {
+          apiCompDiv.innerHTML = `<span class="text-fifared">Error de red</span>`;
+          apiCompDiv.classList.remove('hidden');
+          btnCheck.textContent = '🔍 Ver torneos disponibles en mi plan →';
+          btnCheck.disabled = false;
+        }
+      });
+    }
+
+    // Confirmación destructiva para limpiar competición
+    const formClear = document.getElementById('form-clear');
+    if (formClear && !formClear._clearInit) {
+      formClear._clearInit = true;
+      formClear.addEventListener('submit', function(e) {
+        const ok = confirm('⚠️ ATENCIÓN\n\nEsto borrará TODOS los partidos, pronósticos y reseteará los puntos a 0.\n\n¿Estás seguro?');
+        if (!ok) e.preventDefault();
+      });
+    }
+
+    // Loading state en todos los forms del panel
+    document.querySelectorAll('form[action^="/api/admin/"]').forEach((form) => {
+      if (form._adminInit) return;
+      form._adminInit = true;
+      form.addEventListener('submit', function() {
+        const btn = form.querySelector('button[type="submit"]');
+        if (!btn || btn.disabled) return;
+        btn.disabled = true;
+        btn.textContent = '⏳ Enviando…';
+        btn.style.opacity = '0.6';
+        btn.style.cursor = 'wait';
+      });
+    });
+  }
+  document.addEventListener('DOMContentLoaded', initAdminForms);
+  document.addEventListener('astro:page-load', initAdminForms);
+</script>
