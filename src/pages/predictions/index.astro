@@ -438,6 +438,25 @@ let globalFormIdx = 0;
 </Layout>
 
 <script>
+  async function waShare(text: string) {
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    if (isMobile) {
+      window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      const el = document.createElement('div');
+      el.textContent = 'Texto copiado \u2014 peg\u00e1lo en WhatsApp con Ctrl+V';
+      el.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#0d1117;border:1px solid #25d366;color:#fff;padding:12px 20px;border-radius:12px;font-size:14px;z-index:9999;pointer-events:none;white-space:nowrap';
+      document.body.appendChild(el);
+      window.open('https://web.whatsapp.com', '_blank');
+      setTimeout(() => { el.style.transition = 'opacity .3s'; el.style.opacity = '0'; setTimeout(() => el.remove(), 300); }, 3500);
+    } catch {
+      window.open('https://web.whatsapp.com/send?text=' + encodeURIComponent(text), '_blank');
+    }
+  }
+
   // Generar emojis de bandera en runtime
   function flagFromISO(cc: string): string {
     const base = 0x1F1E6 - 65;
@@ -508,7 +527,7 @@ let globalFormIdx = 0;
     document.querySelectorAll<HTMLButtonElement>('.share-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         const data = JSON.parse(btn.dataset.share ?? '{}');
-        window.open(`https://wa.me/?text=${encodeURIComponent(buildText(data))}`, '_blank');
+        waShare(buildText(data));
       });
     });
   }
