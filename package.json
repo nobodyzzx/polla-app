@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@astrojs/node": "latest",
+    "@astrojs/vercel": "^10.0.3",
     "@supabase/supabase-js": "latest",
     "astro": "latest",
     "country-flag-emoji-polyfill": "^0.1.8"
