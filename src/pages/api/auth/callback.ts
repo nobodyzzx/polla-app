@@ -6,18 +6,22 @@ export const GET: APIRoute = async ({ url, cookies, redirect }) => {
   const token_hash = url.searchParams.get('token_hash');
   const type = url.searchParams.get('type');
 
+  const next = url.searchParams.get('next') ?? '/dashboard';
+
   // Flujo con token_hash (magic link moderno de Supabase)
   if (token_hash && type) {
     const { data, error } = await supabase.auth.verifyOtp({
       token_hash,
-      type: type as 'email' | 'magiclink',
+      type: type as 'email' | 'magiclink' | 'recovery',
     });
 
     if (error || !data.session) {
       return redirect(`/login?error=${encodeURIComponent(error?.message ?? 'Link inválido')}`);
     }
 
-    return setSessionAndRedirect(data.session, data.user, cookies, redirect, supabase);
+    // Recovery → página de nueva contraseña
+    const dest = type === 'recovery' ? '/nueva-contrasena' : next;
+    return setSessionAndRedirect(data.session, data.user, cookies, redirect, supabase, dest);
   }
 
   // Flujo con code (PKCE)
@@ -28,7 +32,7 @@ export const GET: APIRoute = async ({ url, cookies, redirect }) => {
       return redirect(`/login?error=${encodeURIComponent(error?.message ?? 'Link inválido')}`);
     }
 
-    return setSessionAndRedirect(data.session, data.user, cookies, redirect, supabase);
+    return setSessionAndRedirect(data.session, data.user, cookies, redirect, supabase, next);
   }
 
   return redirect(`/login?error=${encodeURIComponent('Link inválido o expirado')}`);
@@ -39,7 +43,8 @@ async function setSessionAndRedirect(
   user: any,
   cookies: any,
   redirect: any,
-  supabase: any
+  supabase: any,
+  dest: string = '/dashboard'
 ) {
   const maxAge = 60 * 60 * 24 * 7; // 7 días
 
@@ -76,5 +81,5 @@ async function setSessionAndRedirect(
     });
   }
 
-  return redirect('/dashboard');
+  return redirect(dest);
 }

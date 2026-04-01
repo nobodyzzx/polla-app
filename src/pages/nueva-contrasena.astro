@@ -1,0 +1,125 @@
+---
+import '@/styles/global.css';
+import { ClientRouter } from 'astro:transitions';
+
+// Esta página solo es accesible con sesión activa (vía recovery link)
+const accessToken  = Astro.cookies.get('sb-access-token')?.value;
+const refreshToken = Astro.cookies.get('sb-refresh-token')?.value;
+if (!accessToken || !refreshToken) return Astro.redirect('/login?error=Link+inválido+o+expirado');
+
+const error   = Astro.url.searchParams.get('error');
+const message = Astro.url.searchParams.get('message');
+---
+
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Nueva contraseña | Polla 2026</title>
+    <link rel="icon" href="/logo-fifa2026.png" />
+    <ClientRouter />
+  </head>
+  <body class="min-h-screen antialiased">
+
+    <div class="fixed inset-0 bg-cover bg-center bg-no-repeat" style="background-image: url('/bg-login.jpg')"></div>
+    <div class="fixed inset-0 bg-brand-950/78"></div>
+
+    <div class="relative z-10 min-h-screen flex flex-col items-center justify-center px-4 py-10">
+
+      <div class="mb-7 text-center">
+        <img src="/logo-fifa2026.png" alt="FIFA World Cup 2026" class="h-24 mx-auto object-contain drop-shadow-2xl" />
+      </div>
+
+      <div class="w-full max-w-sm">
+        <div class="bg-brand-900/85 backdrop-blur-md border border-brand-700/70 rounded-2xl p-6 sm:p-8 space-y-5 shadow-2xl">
+
+          <div class="text-center space-y-1">
+            <h1 class="text-xl font-bold text-white tracking-wide">Nueva contraseña</h1>
+            <p class="text-slate-400 text-sm">Elegí una contraseña segura para tu cuenta</p>
+          </div>
+
+          {error && (
+            <div class="bg-fifared/20 border border-fifared/50 rounded-xl px-4 py-3 text-sm text-red-300 text-center">
+              {error}
+            </div>
+          )}
+          {message && (
+            <div class="bg-gol/10 border border-gol/30 rounded-xl px-4 py-3 text-sm text-green-300 text-center">
+              {message}
+            </div>
+          )}
+
+          {!message && (
+            <form method="POST" action="/api/auth/update-password" class="space-y-4">
+              <div class="space-y-1.5">
+                <label class="text-sm text-slate-300 block">Nueva contraseña</label>
+                <div class="relative">
+                  <input id="pw1" name="password" type="password" required minlength="8" placeholder="Mínimo 8 caracteres"
+                    class="w-full bg-brand-800 border border-brand-700 rounded-xl px-4 py-3.5 pr-12 text-base text-white placeholder-slate-500 focus:outline-none focus:border-gold transition" />
+                  <button type="button" class="eye-toggle absolute right-0 top-0 h-full w-12 flex items-center justify-center text-slate-500 hover:text-slate-300 transition touch-manipulation" aria-label="Mostrar contraseña" data-target="pw1">
+                    <svg class="eye-icon w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                    <svg class="eye-off-icon w-5 h-5 hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
+                  </button>
+                </div>
+              </div>
+              <div class="space-y-1.5">
+                <label class="text-sm text-slate-300 block">Confirmar contraseña</label>
+                <div class="relative">
+                  <input id="pw2" name="confirm_password" type="password" required minlength="8" placeholder="Repetí la contraseña"
+                    class="w-full bg-brand-800 border border-brand-700 rounded-xl px-4 py-3.5 pr-12 text-base text-white placeholder-slate-500 focus:outline-none focus:border-gold transition" />
+                  <button type="button" class="eye-toggle absolute right-0 top-0 h-full w-12 flex items-center justify-center text-slate-500 hover:text-slate-300 transition touch-manipulation" aria-label="Mostrar contraseña" data-target="pw2">
+                    <svg class="eye-icon w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                    <svg class="eye-off-icon w-5 h-5 hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
+                  </button>
+                </div>
+              </div>
+              <p id="pw-mismatch" class="text-sm text-red-400 hidden">Las contraseñas no coinciden</p>
+              <button type="submit" id="submit-btn"
+                class="w-full bg-gold text-brand-950 font-bold py-4 rounded-xl transition active:bg-gold-dark text-base min-h-[52px]">
+                Guardar nueva contraseña
+              </button>
+            </form>
+          )}
+
+          {message && (
+            <a href="/dashboard" class="block w-full bg-gold text-brand-950 font-bold py-4 rounded-xl transition text-base text-center min-h-[52px] flex items-center justify-center">
+              Ir al dashboard
+            </a>
+          )}
+
+        </div>
+      </div>
+    </div>
+
+  <script is:inline>
+    // Eye toggles
+    document.querySelectorAll('.eye-toggle').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var input = document.getElementById(this.getAttribute('data-target'));
+        if (!input) return;
+        var show = input.type === 'password';
+        input.type = show ? 'text' : 'password';
+        this.querySelector('.eye-icon').classList.toggle('hidden', show);
+        this.querySelector('.eye-off-icon').classList.toggle('hidden', !show);
+      });
+    });
+
+    // Validar coincidencia antes de submit
+    var form = document.querySelector('form');
+    if (form) {
+      form.addEventListener('submit', function(e) {
+        var pw1 = document.getElementById('pw1').value;
+        var pw2 = document.getElementById('pw2').value;
+        var msg = document.getElementById('pw-mismatch');
+        if (pw1 !== pw2) {
+          e.preventDefault();
+          msg.classList.remove('hidden');
+        } else {
+          msg.classList.add('hidden');
+        }
+      });
+    }
+  </script>
+  </body>
+</html>

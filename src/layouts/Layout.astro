@@ -246,10 +246,10 @@ if (!isAuthed) {
                 <a href="/admin" class="flex items-center justify-center min-h-[48px] px-2 text-gold font-semibold transition text-sm">⚖️ VAR</a>
                 <a href="/admin/usuarios" class="flex items-center justify-center min-h-[48px] px-2 text-gold/70 hover:text-gold transition text-sm">👥</a>
               </>)}
-              <div class="bg-brand-800 border border-brand-700 px-2.5 py-1.5 rounded-lg text-xs flex items-center gap-1.5 ml-1">
+              <a href="/perfil" class="bg-brand-800 border border-brand-700 px-2.5 py-1.5 rounded-lg text-xs flex items-center gap-1.5 ml-1 hover:border-brand-600 transition">
                 <span class="text-slate-400">{profile?.username}</span>
                 <span class="text-gold font-bold">{profile?.puntos_totales ?? 0}p</span>
-              </div>
+              </a>
               <form method="POST" action="/api/auth/logout">
                 <button class="flex items-center justify-center min-h-[48px] min-w-[40px] text-slate-600 hover:text-fifared transition text-xs px-2" title="Salir">
                   Salir
@@ -294,12 +294,12 @@ if (!isAuthed) {
           <div class="max-w-5xl mx-auto px-6 pt-3 pb-2 flex flex-col items-end">
 
             {/* Usuario alineado a la derecha */}
-            <div class="flex items-center gap-2 py-3 w-full justify-end">
-              <span class="text-xs text-slate-500">{profile?.username}</span>
+            <a href="/perfil" class="flex items-center gap-2 py-3 w-full justify-end">
+              <span class="text-xs text-slate-400">{profile?.username}</span>
               <span class="bg-brand-800 border border-brand-700 px-2.5 py-1 rounded-lg text-xs font-bold text-gold">
                 {profile?.puntos_totales ?? 0} pts
               </span>
-            </div>
+            </a>
 
             <div class="h-px w-full bg-gradient-to-r from-transparent via-brand-600 to-transparent" />
             <a href="/dashboard"   class="flex items-center justify-end gap-3 w-full py-3.5 text-slate-300 active:text-white text-sm font-medium"><span>Tabla de posiciones</span> 🏆</a>
@@ -336,7 +336,7 @@ if (!isAuthed) {
       <slot />
     </main>
 
-    <footer class="border-t border-brand-800 mt-12 py-6 text-center text-xs text-slate-700 px-4">
+    <footer class="border-t border-brand-800 mt-12 py-6 text-center text-xs text-slate-500 px-4">
       Polla Mundial 2026 &middot; Réferi: Harold &middot; No es democracia, es competición ⚽
     </footer>
 
