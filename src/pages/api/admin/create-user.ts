@@ -1,5 +1,6 @@
 import type { APIRoute } from 'astro';
 import { supabase, supabaseAdmin } from '@/lib/supabase';
+import { sanitizeError } from '@/lib/auth-helpers';
 
 export const POST: APIRoute = async ({ request, cookies, redirect }) => {
   const accessToken = cookies.get('sb-access-token')?.value;
@@ -28,7 +29,7 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
   });
 
   if (authErr || !created.user) {
-    return redirect(`/admin/usuarios?err=${encodeURIComponent(authErr?.message ?? 'Error creando usuario')}`);
+    return redirect('/admin/usuarios?err=' + encodeURIComponent(sanitizeError(authErr) ?? 'Error creando usuario'));
   }
 
   // Crear perfil
@@ -46,7 +47,7 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
   if (profileErr) {
     // Revertir usuario en auth si falla el perfil
     await supabaseAdmin.auth.admin.deleteUser(created.user.id);
-    return redirect(`/admin/usuarios?err=${encodeURIComponent('Error creando perfil: ' + profileErr.message)}`);
+    return redirect('/admin/usuarios?err=' + encodeURIComponent(sanitizeError(profileErr)));
   }
 
   return redirect(`/admin/usuarios?msg=${encodeURIComponent(`Usuario "${username}" creado`)}`);

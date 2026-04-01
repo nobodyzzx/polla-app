@@ -1,5 +1,8 @@
 import type { APIRoute } from 'astro';
 import { supabase, supabaseAdmin } from '@/lib/supabase';
+import { isValidUUID, sanitizeError } from '@/lib/auth-helpers';
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export const POST: APIRoute = async ({ request, cookies, redirect }) => {
   const accessToken = cookies.get('sb-access-token')?.value;
@@ -21,8 +24,17 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
   const hasParticipa = form.get('has_participa') === '1';
   const participa    = form.get('participa') === 'on';
 
-  if (!targetId || !username || !email) {
+  if (!targetId || !isValidUUID(targetId) || !username || !email) {
     return redirect('/admin/usuarios?err=Datos+incompletos');
+  }
+  if (!EMAIL_RE.test(email)) {
+    return redirect('/admin/usuarios?err=El+formato+del+correo+no+es+válido');
+  }
+
+  // Verificar que el usuario existe antes de actualizar
+  const { data: existingUser } = await supabaseAdmin.auth.admin.getUserById(targetId);
+  if (!existingUser.user) {
+    return redirect('/admin/usuarios?err=Usuario+no+encontrado');
   }
 
   // Actualizar Auth (email + password opcional)
@@ -30,7 +42,7 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
   if (password) authUpdate.password = password;
 
   const { error: authErr } = await supabaseAdmin.auth.admin.updateUserById(targetId, authUpdate);
-  if (authErr) return redirect(`/admin/usuarios?err=${encodeURIComponent('Error auth: ' + authErr.message)}`);
+  if (authErr) return redirect('/admin/usuarios?err=' + encodeURIComponent(sanitizeError(authErr)));
 
   // No permitir quitarse el rol de réferi a uno mismo
   const finalEsReferi = targetId === user.id ? true : esReferi;
@@ -54,7 +66,7 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
     .update({ username, es_referi: finalEsReferi, participa: finalParticipa })
     .eq('id', targetId);
 
-  if (profileErr) return redirect(`/admin/usuarios?err=${encodeURIComponent('Error perfil: ' + profileErr.message)}`);
+  if (profileErr) return redirect('/admin/usuarios?err=' + encodeURIComponent(sanitizeError(profileErr)));
 
   return redirect(`/admin/usuarios?msg=${encodeURIComponent(`"${username}" actualizado`)}`);
 };

@@ -1,5 +1,6 @@
 import type { APIRoute } from 'astro';
 import { supabase } from '@/lib/supabase';
+import { isValidUUID } from '@/lib/auth-helpers';
 
 export const POST: APIRoute = async ({ request, cookies, redirect }) => {
   const accessToken = cookies.get('sb-access-token')?.value;
@@ -31,8 +32,8 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
     else if (userAwayPen > userHomePen) userWinnerPenalties = 'away';
   }
 
-  if (!matchId || isNaN(userHome) || isNaN(userAway)) {
-    return redirect(`/predictions/${matchId}?error=incompleto`);
+  if (!matchId || !isValidUUID(matchId) || isNaN(userHome) || isNaN(userAway)) {
+    return redirect('/predictions?error=incompleto');
   }
 
   // Doble verificación en servidor: cierre por jornada (2h antes del primer partido).
@@ -77,10 +78,8 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
   });
 
   if (error) {
-    if (error.code === '23505') {
-      return redirect('/predictions?info=ya_pronosticado');
-    }
-    return redirect(`/predictions/${matchId}?error=${encodeURIComponent(error.message)}`);
+    if (error.code === '23505') return redirect('/predictions?info=ya_pronosticado');
+    return redirect('/predictions?error=' + encodeURIComponent('Error al guardar el pronóstico'));
   }
 
   return redirect('/predictions?ok=1');

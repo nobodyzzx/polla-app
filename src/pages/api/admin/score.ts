@@ -1,5 +1,6 @@
 import type { APIRoute } from 'astro';
 import { supabase, supabaseAdmin } from '@/lib/supabase';
+import { sanitizeError } from '@/lib/auth-helpers';
 
 export const POST: APIRoute = async ({ request, cookies, redirect }) => {
   const accessToken = cookies.get('sb-access-token')?.value;
@@ -86,7 +87,7 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
     .eq('id', matchId);
 
   if (matchError) {
-    return redirect(`/admin?err=${encodeURIComponent(matchError.message)}`);
+    return redirect('/admin?err=' + encodeURIComponent(sanitizeError(matchError)));
   }
 
   const { error: calcError } = await supabaseAdmin.rpc('calculate_match_points_safe', {
@@ -94,7 +95,7 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
   });
 
   if (calcError) {
-    return redirect(`/admin?err=Resultado+guardado+pero+error+al+calcular:+${encodeURIComponent(calcError.message)}`);
+    return redirect('/admin?err=' + encodeURIComponent('Resultado guardado pero error al calcular puntos'));
   }
 
   return redirect('/admin?msg=Resultado+cargado+y+puntos+calculados+correctamente');
