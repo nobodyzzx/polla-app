@@ -33,9 +33,12 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
     return redirect('/admin?err=Datos+incompletos');
   }
 
-  // Scores no negativos
+  // Scores en rango válido
   if (homeScore < 0 || awayScore < 0) {
     return redirect('/admin?err=El+marcador+no+puede+ser+negativo');
+  }
+  if (homeScore > 25 || awayScore > 25) {
+    return redirect('/admin?err=Marcador+inválido+(máximo+25+goles)');
   }
 
   // Penales solo válidos si hubo empate

@@ -29,8 +29,8 @@ export const POST: APIRoute = async ({ request, redirect }) => {
     return redirect('/login?error=El+correo+es+obligatorio');
   }
 
-  // Si viene password: login clásico (útil en desarrollo)
-  if (password) {
+  // Si viene password: login clásico — solo disponible en desarrollo
+  if (password && !import.meta.env.PROD) {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error || !data.session) {
@@ -45,7 +45,8 @@ export const POST: APIRoute = async ({ request, redirect }) => {
     });
 
     const maxAge = 60 * 60 * 24 * 7;
-    const cookieOpts = `Path=/; Max-Age=${maxAge}; HttpOnly; SameSite=Lax`;
+    const secure = import.meta.env.PROD ? '; Secure' : '';
+    const cookieOpts = `Path=/; Max-Age=${maxAge}; HttpOnly; SameSite=Lax${secure}`;
     response.headers.append('Set-Cookie', `sb-access-token=${data.session.access_token}; ${cookieOpts}`);
     response.headers.append('Set-Cookie', `sb-refresh-token=${data.session.refresh_token}; ${cookieOpts}`);
 

@@ -48,8 +48,9 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
       .in('external_id', pendingIds)
       .eq('is_finished', false);
 
+    const fixtureMap = new Map(allFixtures.map(f => [f.id, f]));
     for (const dbMatch of pendingDb ?? []) {
-      const api = allFixtures.find(f => f.id === dbMatch.external_id);
+      const api = fixtureMap.get(dbMatch.external_id);
       if (!api) continue;
       const newHome = api.homeTeam?.name;
       const newAway = api.awayTeam?.name;

@@ -52,14 +52,14 @@ async function setSessionAndRedirect(
     path: '/',
     maxAge,
     httpOnly: true,
-    secure: false,
+    secure: import.meta.env.PROD,
     sameSite: 'lax',
   });
   cookies.set('sb-refresh-token', session.refresh_token, {
     path: '/',
     maxAge,
     httpOnly: true,
-    secure: false,
+    secure: import.meta.env.PROD,
     sameSite: 'lax',
   });
 
