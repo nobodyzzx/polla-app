@@ -34,18 +34,37 @@
 
 ## Sistema de puntos
 
+### Fase de grupos
+
 | Resultado | Puntos |
 |---|---|
-| Marcador exacto | **3 puntos** |
-| Diferencia de goles correcta | **2 puntos** |
-| Solo acertaste el ganador | **1 punto** |
-| No acertaste nada | 0 puntos |
+| Marcador exacto | **3** |
+| Ganador / empate correcto | **1** |
 
-**Ejemplo**: El partido termina 3-1.
-- Pronosticaste 3-1 → **3 pts** (exacto)
-- Pronosticaste 2-0 → **2 pts** (diferencia correcta, ambos ganaron por 2)
-- Pronosticaste 1-0 → **1 pt** (acertaste que ganaba el local)
-- Pronosticaste 0-2 → **0 pts**
+### Fase eliminatoria — sin penales
+
+| Resultado | Puntos |
+|---|---|
+| Marcador exacto | **3** |
+| Ganador correcto | **1** |
+| No acertó ganador | 0 |
+
+### Fase eliminatoria — partido que va a penales
+
+Primero tenés que pronosticar **empate** en 90 minutos — si no lo hacés, recibís 0 puntos aunque aciertes el clasificado.
+
+Si pronosticás empate, aparece la sección de penales donde ingresás el marcador del shootout (ej: 4–2).
+
+| Acierto | Puntos |
+|---|---|
+| Marcador 90' exacto + marcador penales exacto | **6** |
+| Marcador 90' exacto + solo acertaste el clasificado | **4** |
+| Marcador 90' no exacto + acertaste el clasificado | **2** |
+| Marcador 90' no exacto + clasificado incorrecto | **1** |
+
+### Regla de jornada completa
+
+Si no pronosticás **todos** los partidos de una jornada, tus puntos de esa jornada se anulan — aunque hayas acertado.
 
 ---
 

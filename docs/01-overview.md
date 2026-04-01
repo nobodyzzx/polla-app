@@ -10,14 +10,35 @@ Aplicación web para pronosticar resultados del Mundial 2026. Los jugadores ingr
 
 ## Sistema de puntos
 
+### Fase de grupos
+
 | Acierto | Puntos |
 |---|---|
-| Marcador exacto | 3 pts |
-| Diferencia de goles correcta (no empate) | 2 pts |
-| Ganador correcto | 1 pt |
-| Fallo total | 0 pts |
+| Marcador exacto | 3 |
+| Ganador / empate correcto | 1 |
 
-En fases eliminatorias se suman puntos por penales si aplica.
+### Fase eliminatoria — sin penales
+
+| Acierto | Puntos |
+|---|---|
+| Marcador exacto | 3 |
+| Ganador correcto | 1 |
+| No acertó ganador | 0 |
+
+### Fase eliminatoria — definición por penales *(empate en 120')*
+
+Si el usuario no pronosticó empate recibe **0 puntos** automáticamente.
+
+| Acierto | Puntos |
+|---|---|
+| Marcador 90' exacto + marcador penales exacto | **6** |
+| Marcador 90' exacto + clasificado correcto | **4** |
+| Marcador 90' no exacto + clasificado correcto | **2** |
+| Marcador 90' no exacto + clasificado incorrecto | **1** |
+
+### Regla de jornada completa
+
+Si el jugador no pronostica **todos** los partidos de una jornada, sus puntos de esa jornada se anulan.
 
 ## Roles
 
