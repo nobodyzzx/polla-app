@@ -1,5 +1,6 @@
 import type { APIRoute } from 'astro';
 import { supabase } from '@/lib/supabase';
+import { ensureProfile } from '@/lib/auth-helpers';
 
 export const GET: APIRoute = async ({ url, cookies, redirect }) => {
   const code = url.searchParams.get('code');
@@ -63,23 +64,6 @@ async function setSessionAndRedirect(
     sameSite: 'lax',
   });
 
-  // Crear perfil si es primer login
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('id')
-    .eq('id', user.id)
-    .single();
-
-  if (!profile) {
-    const adminEmail = import.meta.env.ADMIN_EMAIL?.toLowerCase().trim();
-    const isAdmin = !!adminEmail && user.email?.toLowerCase().trim() === adminEmail;
-    const username = user.email?.split('@')[0] ?? `user_${Date.now()}`;
-    await supabase.from('profiles').insert({
-      id: user.id,
-      username,
-      es_referi: isAdmin,
-    });
-  }
-
+  await ensureProfile(user, supabase, import.meta.env.ADMIN_EMAIL);
   return redirect(dest);
 }

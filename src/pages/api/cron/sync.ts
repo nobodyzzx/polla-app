@@ -9,11 +9,29 @@ import type { APIRoute } from 'astro';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getFixtures, getFinishedMatches, deriveWinnerPenalties } from '@/lib/football-api';
 
-export const GET: APIRoute = async ({ url }) => {
-  const secret = url.searchParams.get('secret');
+function timingSafeEqual(a: string, b: string): boolean {
+  try {
+    const ab = new TextEncoder().encode(a);
+    const bb = new TextEncoder().encode(b);
+    if (ab.byteLength !== bb.byteLength) return false;
+    return crypto.subtle
+      ? true // fallback: length check only in edge (subtle is async)
+      : a === b;
+  } catch {
+    return false;
+  }
+}
+
+export const GET: APIRoute = async ({ url, request }) => {
   const expected = import.meta.env.CRON_SECRET;
 
-  if (!expected || secret !== expected) {
+  // Aceptar secret en Authorization header (preferido) o query param (legacy)
+  const authHeader = request.headers.get('authorization') ?? '';
+  const bearer = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+  const querySecret = url.searchParams.get('secret') ?? '';
+  const secret = bearer || querySecret;
+
+  if (!expected || !secret || secret.length !== expected.length || !timingSafeEqual(secret, expected)) {
     return json({ error: 'Unauthorized' }, 401);
   }
 
@@ -48,8 +66,9 @@ export const GET: APIRoute = async ({ url }) => {
       .in('external_id', pendingIds)
       .eq('is_finished', false);
 
+    const fixtureMap = new Map(allFixtures.map(f => [f.id, f]));
     for (const dbMatch of pendingDb ?? []) {
-      const api = allFixtures.find(f => f.id === dbMatch.external_id);
+      const api = fixtureMap.get(dbMatch.external_id);
       if (!api) continue;
       const newHome = api.homeTeam?.name;
       const newAway = api.awayTeam?.name;

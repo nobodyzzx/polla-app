@@ -1,5 +1,6 @@
 import type { APIRoute } from 'astro';
 import { supabase } from '@/lib/supabase';
+import { ensureProfile } from '@/lib/auth-helpers';
 
 function traducirError(msg: string): string {
   const m = msg.toLowerCase();
@@ -50,20 +51,7 @@ export const POST: APIRoute = async ({ request, redirect }) => {
     response.headers.append('Set-Cookie', `sb-access-token=${data.session.access_token}; ${cookieOpts}`);
     response.headers.append('Set-Cookie', `sb-refresh-token=${data.session.refresh_token}; ${cookieOpts}`);
 
-    // Crear perfil si es primer login
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('id')
-      .eq('id', data.user.id)
-      .single();
-
-    if (!profile) {
-      const adminEmail = import.meta.env.ADMIN_EMAIL?.toLowerCase().trim();
-      const isAdmin = !!adminEmail && data.user.email?.toLowerCase().trim() === adminEmail;
-      const username = data.user.email?.split('@')[0] ?? `user_${Date.now()}`;
-      await supabase.from('profiles').insert({ id: data.user.id, username, es_referi: isAdmin });
-    }
-
+    await ensureProfile(data.user, supabase, import.meta.env.ADMIN_EMAIL);
     return response;
   }
 

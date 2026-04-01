@@ -251,12 +251,10 @@ function formatDate(d: string) {
             <p class="text-xs text-slate-600 text-center">Marca partidos jugados</p>
           </div>
           <div class="space-y-1">
-            <form method="POST" action="/api/admin/clear-matches" id="form-clear">
-              <button type="submit"
-                class="w-full bg-fifared/8 border border-fifared/30 text-fifared text-sm font-semibold px-2 py-3 rounded-xl transition active:bg-fifared/20 min-h-[48px]">
-                🗑️ Limpiar Todo
-              </button>
-            </form>
+            <button type="button" onclick="document.getElementById('modal-clear').classList.remove('hidden')"
+              class="w-full bg-fifared/8 border border-fifared/30 text-fifared text-sm font-semibold px-2 py-3 rounded-xl transition active:bg-fifared/20 min-h-[48px]">
+              🗑️ Limpiar Todo
+            </button>
             <p class="text-xs text-slate-600 text-center">Resetea todo</p>
           </div>
           <div class="space-y-1">
@@ -921,15 +919,7 @@ function formatDate(d: string) {
       });
     }
 
-    // Confirmación destructiva para limpiar competición
-    const formClear = document.getElementById('form-clear');
-    if (formClear && !formClear._clearInit) {
-      formClear._clearInit = true;
-      formClear.addEventListener('submit', function(e) {
-        const ok = confirm('⚠️ ATENCIÓN\n\nEsto borrará TODOS los partidos, pronósticos y reseteará los puntos a 0.\n\n¿Estás seguro?');
-        if (!ok) e.preventDefault();
-      });
-    }
+    // El modal de confirmación se maneja con HTML puro (ver #modal-clear)
 
     // Loading state en todos los forms del panel
     document.querySelectorAll('form[action^="/api/admin/"]').forEach((form) => {
@@ -947,4 +937,39 @@ function formatDate(d: string) {
   }
   document.addEventListener('DOMContentLoaded', initAdminForms);
   document.addEventListener('astro:page-load', initAdminForms);
+</script>
+
+<!-- ── Modal: confirmar Limpiar Todo ─────────────────────────────── -->
+<div id="modal-clear" class="hidden fixed inset-0 z-[300] flex items-center justify-center px-4">
+  <div class="absolute inset-0 bg-brand-950/80 backdrop-blur-sm" onclick="document.getElementById('modal-clear').classList.add('hidden')"></div>
+  <div class="relative z-10 bg-brand-900 border border-fifared/50 rounded-2xl p-6 max-w-sm w-full space-y-4 shadow-2xl">
+    <div class="flex items-center gap-3">
+      <span class="text-2xl">⚠️</span>
+      <h3 class="text-white font-bold text-lg">Limpiar competición</h3>
+    </div>
+    <p class="text-slate-300 text-sm">
+      Esto borrará <strong class="text-fifared">TODOS</strong> los partidos, pronósticos y sanciones, y reseteará los puntos a 0.
+    </p>
+    <p class="text-slate-400 text-sm">
+      Para confirmar, escribí <code class="bg-brand-800 px-1.5 py-0.5 rounded text-fifared font-mono">LIMPIAR TODO</code> abajo:
+    </p>
+    <form method="POST" action="/api/admin/clear-matches" class="space-y-3">
+      <input name="confirm_phrase" type="text" placeholder="LIMPIAR TODO"
+        autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false"
+        class="w-full bg-brand-800 border border-brand-700 rounded-xl px-4 py-3 text-base text-white placeholder-slate-600 focus:outline-none focus:border-fifared transition font-mono uppercase tracking-widest" />
+      <div class="flex gap-2">
+        <button type="button" onclick="document.getElementById('modal-clear').classList.add('hidden')"
+          class="flex-1 bg-brand-800 border border-brand-700 text-slate-300 font-semibold py-3 rounded-xl transition active:bg-brand-700 min-h-[48px]">
+          Cancelar
+        </button>
+        <button type="submit"
+          class="flex-1 bg-fifared/20 border border-fifared/50 text-fifared font-bold py-3 rounded-xl transition active:bg-fifared/30 min-h-[48px]">
+          Limpiar
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script is:inline>
 </script>
