@@ -316,12 +316,21 @@ function predStyle(pred: any, m: any): string {
 
 <script>
   async function waShare(text: string) {
-    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-    if (isMobile) {
-      window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
-      return;
+    // 1. Web Share API nativo (mobile Chrome/Safari — más confiable)
+    if (navigator.share) {
+      try { await navigator.share({ text }); return; } catch (e) {
+        if ((e as Error).name === 'AbortError') return; // usuario canceló
+      }
     }
-    try { await navigator.clipboard.writeText(text); } catch { /* silencioso */ }
+    const waUrl = 'https://wa.me/?text=' + encodeURIComponent(text);
+    // 2. Mobile sin Web Share API: abrir wa.me
+    if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+      window.open(waUrl, '_blank'); return;
+    }
+    // 3. Desktop: intentar clipboard; si falla, abrir wa.me web
+    let copied = false;
+    try { await navigator.clipboard.writeText(text); copied = true; } catch { /**/ }
+    if (!copied) { window.open(waUrl, '_blank'); return; }
     const el = document.createElement('div');
     el.textContent = '\uD83D\uDCCB Copiado \u2014 peg\u00e1lo en WhatsApp con Ctrl+V';
     el.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#0d1117;border:1px solid #25d366;color:#fff;padding:12px 20px;border-radius:12px;font-size:14px;z-index:9999;pointer-events:none;white-space:nowrap';
