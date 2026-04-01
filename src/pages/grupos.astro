@@ -133,12 +133,12 @@ function fmtDateShort(d: string) {
                 {allPlayed && <span class="text-[10px] bg-gol/20 text-gol px-2 py-0.5 rounded-full font-bold uppercase tracking-wide">Completo</span>}
               </div>
               <div class="flex gap-2 text-[10px] text-slate-500 font-mono uppercase">
-                <span class="w-5 text-center">PJ</span>
-                <span class="w-5 text-center">G</span>
-                <span class="w-5 text-center">E</span>
-                <span class="w-5 text-center">P</span>
-                <span class="w-7 text-center">GF:GC</span>
-                <span class="w-6 text-center">DG</span>
+                <span class="w-5 text-center hidden sm:inline-block">PJ</span>
+                <span class="w-5 text-center hidden sm:inline-block">G</span>
+                <span class="w-5 text-center hidden sm:inline-block">E</span>
+                <span class="w-5 text-center hidden sm:inline-block">P</span>
+                <span class="w-7 text-center hidden sm:inline-block">GF:GC</span>
+                <span class="w-6 text-center hidden sm:inline-block">DG</span>
                 <span class="w-7 text-center font-bold text-slate-400">Pts</span>
               </div>
             </div>
@@ -163,15 +163,15 @@ function fmtDateShort(d: string) {
                     )}
                   </div>
                   <div class="flex gap-2 text-xs font-mono flex-shrink-0">
-                    <span class="w-5 text-center text-slate-400">{t.pj}</span>
-                    <span class="w-5 text-center text-slate-400">{t.g}</span>
-                    <span class="w-5 text-center text-slate-400">{t.e}</span>
-                    <span class="w-5 text-center text-slate-400">{t.p}</span>
-                    <span class="w-7 text-center text-slate-500">{t.gf}:{t.gc}</span>
-                    <span class={`w-6 text-center ${t.dg > 0 ? 'text-gol' : t.dg < 0 ? 'text-roja' : 'text-slate-500'}`}>
+                    <span class="w-5 text-center text-slate-400 hidden sm:inline-block">{t.pj}</span>
+                    <span class="w-5 text-center text-slate-400 hidden sm:inline-block">{t.g}</span>
+                    <span class="w-5 text-center text-slate-400 hidden sm:inline-block">{t.e}</span>
+                    <span class="w-5 text-center text-slate-400 hidden sm:inline-block">{t.p}</span>
+                    <span class="w-7 text-center text-slate-500 hidden sm:inline-block">{t.gf}:{t.gc}</span>
+                    <span class={`w-6 text-center hidden sm:inline-block ${t.dg > 0 ? 'text-gol' : t.dg < 0 ? 'text-roja' : 'text-slate-500'}`}>
                       {t.dg > 0 ? `+${t.dg}` : t.dg}
                     </span>
-                    <span class={`w-7 text-center font-bold ${classified ? 'text-gold' : 'text-white'}`}>
+                    <span class={`w-7 text-center font-bold tabular-nums ${classified ? 'text-gold' : 'text-white'}`}>
                       {t.pts}
                     </span>
                   </div>
