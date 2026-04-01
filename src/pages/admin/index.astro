@@ -165,6 +165,15 @@ function formatDate(d: string) {
             <p class="text-xs text-slate-600 text-center">2 grupos + elim.</p>
           </div>
           <div class="space-y-1">
+            <form method="POST" action="/api/admin/seed-knockout">
+              <button type="submit"
+                class="w-full bg-brand-800/60 border border-brand-600/50 text-slate-400 text-sm font-semibold px-2 py-3 rounded-xl transition active:bg-brand-700 min-h-[48px]">
+                🏆 Solo Eliminatorias
+              </button>
+            </form>
+            <p class="text-xs text-slate-600 text-center">Con penales</p>
+          </div>
+          <div class="space-y-1">
             <form method="POST" action="/api/admin/simulate" id="form-simulate">
               <button type="submit"
                 class="w-full bg-brand-700/50 border border-brand-600/60 text-slate-300 text-sm font-semibold px-2 py-3 rounded-xl transition active:bg-brand-600 min-h-[48px]">
