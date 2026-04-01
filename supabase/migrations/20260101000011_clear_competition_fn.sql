@@ -11,13 +11,14 @@ SECURITY DEFINER
 AS $$
 BEGIN
   -- Predictions: la RULE bloquea DELETE normal, SECURITY DEFINER lo bypasea
-  DELETE FROM predictions;
-  DELETE FROM sanctions;
-  DELETE FROM matches;
+  DELETE FROM predictions  WHERE true;
+  DELETE FROM sanctions    WHERE true;
+  DELETE FROM matches      WHERE true;
   UPDATE profiles
     SET puntos_totales = 0,
         expulsado      = FALSE,
         pago_70        = FALSE,
-        pago_50        = FALSE;
+        pago_50        = FALSE
+  WHERE true;
 END;
 $$;
