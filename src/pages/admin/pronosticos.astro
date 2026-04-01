@@ -280,10 +280,9 @@ const WA_ICON = `<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor
     if (m.finished && m.hs !== null) {
       line = `\u26BD *${m.home} ${hf} ${m.hs}\u2013${m.as_} ${af} ${m.away}*`;
       if (m.winnerPen) {
-        const winner = m.winnerPen === 'home' ? m.home : m.away;
-        const wf     = m.winnerPen === 'home' ? hf : af;
+        const winner   = m.winnerPen === 'home' ? m.home : m.away;
         const penScore = m.homePen !== null ? `${m.homePen}\u2013${m.awayPen} pen` : 'pen';
-        line += `\n_(${penScore} \u00B7 clasifica ${wf} ${winner})_`;
+        line += `\n_(${penScore} \u00B7 clasifica ${winner})_`;
       }
     } else {
       line = `\u26BD *${m.home} ${hf} vs ${af} ${m.away}*`;
@@ -297,11 +296,10 @@ const WA_ICON = `<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor
     let predStr = `${pl.uh}\u2013${pl.ua}`;
     // Pen solo si pronosticó empate
     if (pl.uh === pl.ua && pl.uwp) {
-      const wf    = pl.uwp === 'home' ? hf : af;
       const wName = pl.uwp === 'home' ? m.home : m.away;
       predStr += pl.uhp !== null
         ? ` (pen ${pl.uhp}\u2013${pl.uap})`
-        : ` (pen ${wf} ${wName})`;
+        : ` (pen ${wName})`;
     }
     if (m.finished && m.hs !== null) {
       const isExact = pl.uh === m.hs && pl.ua === m.as_;
@@ -345,10 +343,9 @@ const WA_ICON = `<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor
       if (m.finished && m.hs !== null) {
         let header = `*${m.home} ${hf} ${m.hs}\u2013${m.as_} ${af} ${m.away}*`;
         if (m.winnerPen) {
-          const winner = m.winnerPen === 'home' ? m.home : m.away;
-          const wf     = m.winnerPen === 'home' ? hf : af;
+          const winner   = m.winnerPen === 'home' ? m.home : m.away;
           const penScore = m.homePen !== null ? `${m.homePen}\u2013${m.awayPen} pen` : 'pen';
-          header += `\n_(${penScore} \u00B7 clasifica ${wf} ${winner})_`;
+          header += `\n_(${penScore} \u00B7 clasifica ${winner})_`;
         }
         text += header + '\n';
         for (const pl of m.players) {
