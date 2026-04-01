@@ -108,7 +108,8 @@ const cutoffDate = new Date(firstMatchTime - 2 * 3600 * 1000).toLocaleString('es
               {match.home_team}
             </label>
             <input
-              type="number" name="userHome" min="0" max="20" required placeholder="0"
+              type="number" inputmode="numeric" pattern="[0-9]*"
+              name="userHome" min="0" max="20" required placeholder="0"
               class="w-full bg-brand-800 border-2 border-brand-700 rounded-2xl px-2 py-5 text-white text-4xl font-display text-center focus:outline-none focus:border-gold transition"
               id="input-home"
             />
@@ -124,7 +125,8 @@ const cutoffDate = new Date(firstMatchTime - 2 * 3600 * 1000).toLocaleString('es
               {match.away_team}
             </label>
             <input
-              type="number" name="userAway" min="0" max="20" required placeholder="0"
+              type="number" inputmode="numeric" pattern="[0-9]*"
+              name="userAway" min="0" max="20" required placeholder="0"
               class="w-full bg-brand-800 border-2 border-brand-700 rounded-2xl px-2 py-5 text-white text-4xl font-display text-center focus:outline-none focus:border-gold transition"
               id="input-away"
             />
@@ -145,7 +147,8 @@ const cutoffDate = new Date(firstMatchTime - 2 * 3600 * 1000).toLocaleString('es
             <div class="flex-1 text-center space-y-2">
               <label class="text-xs text-slate-500 block truncate">{match.home_team}</label>
               <input
-                type="number" name="userHomePen" id="input-pen-home"
+                type="number" inputmode="numeric" pattern="[0-9]*"
+                name="userHomePen" id="input-pen-home"
                 min="0" max="20" placeholder="0"
                 class="w-full bg-gold/10 border-2 border-gold/40 rounded-2xl px-2 py-5 text-gold text-4xl font-display text-center focus:outline-none focus:border-gold transition placeholder:text-gold/30"
               />
@@ -157,7 +160,8 @@ const cutoffDate = new Date(firstMatchTime - 2 * 3600 * 1000).toLocaleString('es
             <div class="flex-1 text-center space-y-2">
               <label class="text-xs text-slate-500 block truncate">{match.away_team}</label>
               <input
-                type="number" name="userAwayPen" id="input-pen-away"
+                type="number" inputmode="numeric" pattern="[0-9]*"
+                name="userAwayPen" id="input-pen-away"
                 min="0" max="20" placeholder="0"
                 class="w-full bg-gold/10 border-2 border-gold/40 rounded-2xl px-2 py-5 text-gold text-4xl font-display text-center focus:outline-none focus:border-gold transition placeholder:text-gold/30"
               />
@@ -167,7 +171,7 @@ const cutoffDate = new Date(firstMatchTime - 2 * 3600 * 1000).toLocaleString('es
         </div>
       )}
 
-      <button type="submit"
+      <button type="submit" id="submit-btn"
         class="w-full bg-gold text-brand-950 font-bold py-4 rounded-2xl transition active:bg-gold-dark text-lg min-h-[56px]">
         Enviar Pronóstico ✅
       </button>
@@ -183,6 +187,18 @@ const cutoffDate = new Date(firstMatchTime - 2 * 3600 * 1000).toLocaleString('es
     </a>
   </div>
 </Layout>
+
+<script>
+  document.querySelector('form')?.addEventListener('submit', () => {
+    const btn = document.getElementById('submit-btn') as HTMLButtonElement | null;
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Enviando…';
+      btn.classList.remove('bg-gold', 'active:bg-gold-dark');
+      btn.classList.add('bg-gol', 'opacity-75', 'cursor-not-allowed');
+    }
+  });
+</script>
 
 {match.stage === 'knockout' && (
   <script>
