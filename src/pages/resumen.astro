@@ -1,0 +1,314 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import { supabase, supabaseAdmin } from '@/lib/supabase';
+import { teamFlag } from '@/lib/isoFlags';
+
+const accessToken = Astro.cookies.get('sb-access-token')?.value;
+const refreshToken = Astro.cookies.get('sb-refresh-token')?.value;
+if (!accessToken || !refreshToken) { Astro.cookies.delete('sb-access-token', { path: '/' }); Astro.cookies.delete('sb-refresh-token', { path: '/' }); return Astro.redirect('/login'); }
+const { data: { user } } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+if (!user) { Astro.cookies.delete('sb-access-token', { path: '/' }); Astro.cookies.delete('sb-refresh-token', { path: '/' }); return Astro.redirect('/login'); }
+
+const { data: navProfile } = await supabase.from('profiles').select('username, puntos_totales, es_referi').eq('id', user.id).single();
+
+const [{ data: rawMatches }, { data: rawPlayers }] = await Promise.all([
+  supabaseAdmin.from('matches')
+    .select('id, home_team, away_team, home_score, away_score, home_pen, away_pen, winner_penalties, stage, group_name, round, jornada, match_date')
+    .eq('is_finished', true).order('match_date', { ascending: true }),
+  supabaseAdmin.from('profiles')
+    .select('id, username, puntos_totales').eq('participa', true).order('puntos_totales', { ascending: false }),
+]);
+
+const matches  = rawMatches ?? [];
+const players  = rawPlayers ?? [];
+const matchIds = matches.map((m: any) => m.id);
+
+const rawPreds = matchIds.length
+  ? (await supabaseAdmin.from('predictions')
+      .select('user_id, match_id, user_home, user_away, user_home_pen, user_away_pen, user_winner_penalties, points_earned')
+      .in('match_id', matchIds)).data ?? []
+  : [];
+
+const predMap: Record<string, Record<string, any>> = {};
+for (const p of rawPreds) {
+  if (!predMap[p.match_id]) predMap[p.match_id] = {};
+  predMap[p.match_id][p.user_id] = p;
+}
+
+const groupMatches   = matches.filter((m: any) => m.stage === 'group');
+const knockoutMatches = matches.filter((m: any) => m.stage === 'knockout');
+
+// Group stage por grupo
+const groupOrder: string[] = [];
+const byGroup: Record<string, any[]> = {};
+for (const m of groupMatches) {
+  const g = (m as any).group_name ?? '?';
+  if (!byGroup[g]) { byGroup[g] = []; groupOrder.push(g); }
+  byGroup[g].push(m);
+}
+
+// Eliminatoria por ronda
+const roundOrder: string[] = [];
+const byRound: Record<string, any[]> = {};
+for (const m of knockoutMatches) {
+  const r = (m as any).round ?? (m as any).jornada ?? 'Eliminatoria';
+  if (!byRound[r]) { byRound[r] = []; roundOrder.push(r); }
+  byRound[r].push(m);
+}
+
+type CellInfo = { icon: string; score: string; pen: string; pts: number | null; cls: string; bg: string };
+
+function cell(pred: any, m: any): CellInfo {
+  if (!pred || pred.user_home === null) return { icon: '–', score: '', pen: '', pts: null, cls: 'text-slate-700', bg: '' };
+  const exact = pred.user_home === m.home_score && pred.user_away === m.away_score;
+  const pR = pred.user_home > pred.user_away ? 'H' : pred.user_home < pred.user_away ? 'A' : 'E';
+  const mR = m.home_score  > m.away_score   ? 'H' : m.home_score  < m.away_score   ? 'A' : 'E';
+  const ok = !exact && pR === mR;
+  const icon = exact ? '⭐' : ok ? '✅' : '❌';
+  const cls  = exact ? 'text-gold font-bold' : ok ? 'text-gol' : 'text-slate-500';
+  const bg   = exact ? 'bg-gold/8' : ok ? 'bg-gol/8' : '';
+  let pen = '';
+  if (pred.user_home === pred.user_away && pred.user_winner_penalties && pred.user_home_pen !== null)
+    pen = `${pred.user_home_pen}–${pred.user_away_pen}`;
+  return { icon, score: `${pred.user_home}–${pred.user_away}`, pen, pts: pred.points_earned, cls, bg };
+}
+
+const grpTotals = Object.fromEntries(players.map((p: any) => [
+  p.id, groupMatches.reduce((s: number, m: any) => s + (predMap[m.id]?.[p.id]?.points_earned ?? 0), 0)
+]));
+const elTotals = Object.fromEntries(players.map((p: any) => [
+  p.id, knockoutMatches.reduce((s: number, m: any) => s + (predMap[m.id]?.[p.id]?.points_earned ?? 0), 0)
+]));
+---
+
+<Layout title="Resumen" navProfile={navProfile} isAuthed={true}>
+<style>
+  @media print {
+    @page { size: A4 landscape; margin: 0.7cm; }
+    .no-print, nav, header { display: none !important; }
+    .tab-pane { display: none !important; }
+    .tab-pane.print-active { display: block !important; }
+    table { font-size: 8px !important; }
+    th, td { padding: 2px 3px !important; }
+    body, html { background: white !important; color: black !important; }
+    .text-gold { color: #b8860b !important; }
+    .text-gol  { color: #166534 !important; }
+    .bg-gold\/8 { background: #fef9c3 !important; }
+    .bg-gol\/8  { background: #dcfce7 !important; }
+  }
+  .player-th span {
+    display: inline-block;
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    white-space: nowrap;
+    max-height: 72px;
+    overflow: hidden;
+  }
+</style>
+
+<div class="space-y-4 max-w-full">
+
+  <!-- Header -->
+  <div class="flex items-center justify-between gap-3 flex-wrap no-print">
+    <div>
+      <h1 class="font-display text-4xl text-white tracking-wide">📊 RESUMEN</h1>
+      <p class="text-slate-500 text-sm mt-1">{players.length} participantes · {matches.length} partidos terminados</p>
+    </div>
+    <div class="flex items-center gap-2 flex-wrap">
+      <button id="btn-grupos" onclick="showTab('grupos')"
+        class="text-sm px-4 py-2 rounded-xl border border-gold/50 bg-gold/10 text-gold font-semibold transition">
+        ⚽ Grupos
+      </button>
+      <button id="btn-elim" onclick="showTab('elim')"
+        class="text-sm px-4 py-2 rounded-xl border border-brand-600 bg-brand-800 text-slate-400 font-semibold transition hover:text-white">
+        🏆 Eliminatorias
+      </button>
+      <button onclick="window.print()"
+        class="text-sm px-4 py-2 rounded-xl border border-brand-600 bg-brand-800 text-slate-300 hover:text-white transition font-semibold">
+        🖨️ Guardar PDF
+      </button>
+    </div>
+  </div>
+
+  {matches.length === 0 && (
+    <div class="text-center py-20 text-slate-600">
+      <div class="text-5xl mb-4">📋</div>
+      <p>Aún no hay partidos terminados.</p>
+    </div>
+  )}
+
+  <!-- ── TAB GRUPOS ── -->
+  <div id="tab-grupos" class="tab-pane print-active overflow-x-auto">
+    {groupMatches.length === 0
+      ? <p class="text-slate-600 text-sm py-8">No hay partidos de grupos terminados.</p>
+      : (
+        <table class="border-collapse text-xs w-full">
+          <thead>
+            <tr>
+              <th class="text-left px-3 py-2 text-slate-500 font-medium border-b border-brand-700 whitespace-nowrap min-w-[150px]">Partido</th>
+              <th class="px-2 py-2 text-slate-500 font-medium border-b border-brand-700 whitespace-nowrap">Res.</th>
+              {players.map((p: any) => (
+                <th class="player-th px-1 pb-1 border-b border-brand-700 min-w-[52px] max-w-[52px] align-bottom">
+                  <span class={`text-[11px] font-semibold ${p.id === user.id ? 'text-gold' : 'text-slate-400'}`}>{p.username}</span>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {groupOrder.map((g) => (<>
+              <tr>
+                <td colspan={2 + players.length} class="px-3 py-1 text-[10px] font-bold text-slate-500 uppercase tracking-widest bg-brand-800/60 border-y border-brand-700/40">
+                  Grupo {g}
+                </td>
+              </tr>
+              {byGroup[g].map((m: any) => (
+                <tr class="border-b border-brand-800/30 hover:bg-brand-800/20">
+                  <td class="px-3 py-1.5 text-slate-300 whitespace-nowrap">
+                    {teamFlag(m.home_team)} {m.home_team} <span class="text-slate-600 text-[10px]">vs</span> {m.away_team} {teamFlag(m.away_team)}
+                  </td>
+                  <td class="px-2 py-1.5 text-center font-display text-white whitespace-nowrap">{m.home_score}–{m.away_score}</td>
+                  {players.map((p: any) => {
+                    const c = cell(predMap[m.id]?.[p.id], m);
+                    return (
+                      <td class={`px-1 py-1.5 text-center ${c.bg}`}>
+                        <div class={`leading-tight ${c.cls}`}>{c.icon} {c.score}</div>
+                        {c.pts !== null && <div class="text-[10px] text-slate-500 leading-none">{c.pts}p</div>}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+              <tr class="border-b border-brand-700 bg-brand-900">
+                <td colspan={2} class="px-3 py-1 text-[10px] text-slate-500 font-semibold">Subtotal G{g}</td>
+                {players.map((p: any) => {
+                  const sub = byGroup[g].reduce((s: number, m: any) => s + (predMap[m.id]?.[p.id]?.points_earned ?? 0), 0);
+                  return <td class="px-1 py-1 text-center font-display text-[11px] text-gold">{sub}</td>;
+                })}
+              </tr>
+            </>))}
+          </tbody>
+          <tfoot>
+            <tr class="border-t-2 border-brand-600 bg-brand-900">
+              <td colspan={2} class="px-3 py-2 text-sm font-bold text-white uppercase tracking-wide">TOTAL GRUPOS</td>
+              {players.map((p: any) => (
+                <td class="px-1 py-2 text-center">
+                  <div class="font-display text-base text-gold">{grpTotals[p.id]}</div>
+                  <div class="text-[9px] text-slate-500">pts</div>
+                </td>
+              ))}
+            </tr>
+          </tfoot>
+        </table>
+      )
+    }
+  </div>
+
+  <!-- ── TAB ELIMINATORIAS ── -->
+  <div id="tab-elim" class="tab-pane hidden overflow-x-auto">
+    {knockoutMatches.length === 0
+      ? <p class="text-slate-600 text-sm py-8">No hay partidos de eliminatoria terminados.</p>
+      : (
+        <table class="border-collapse text-xs w-full">
+          <thead>
+            <tr>
+              <th class="text-left px-3 py-2 text-slate-500 font-medium border-b border-brand-700 whitespace-nowrap min-w-[150px]">Partido</th>
+              <th class="px-2 py-2 text-slate-500 font-medium border-b border-brand-700 whitespace-nowrap min-w-[90px]">Resultado</th>
+              {players.map((p: any) => (
+                <th class="player-th px-1 pb-1 border-b border-brand-700 min-w-[60px] max-w-[60px] align-bottom">
+                  <span class={`text-[11px] font-semibold ${p.id === user.id ? 'text-gold' : 'text-slate-400'}`}>{p.username}</span>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {roundOrder.map((r) => (<>
+              <tr>
+                <td colspan={2 + players.length} class="px-3 py-1 text-[10px] font-bold text-slate-500 uppercase tracking-widest bg-brand-800/60 border-y border-brand-700/40">
+                  {r}
+                </td>
+              </tr>
+              {byRound[r].map((m: any) => {
+                const winner = m.winner_penalties === 'home' ? m.home_team : m.winner_penalties === 'away' ? m.away_team : null;
+                return (
+                  <tr class="border-b border-brand-800/30 hover:bg-brand-800/20">
+                    <td class="px-3 py-1.5 text-slate-300 whitespace-nowrap">
+                      {teamFlag(m.home_team)} {m.home_team} <span class="text-slate-600 text-[10px]">vs</span> {m.away_team} {teamFlag(m.away_team)}
+                    </td>
+                    <td class="px-2 py-1.5 text-center whitespace-nowrap">
+                      <div class="font-display text-white">{m.home_score}–{m.away_score}</div>
+                      {m.winner_penalties && m.home_pen !== null && (
+                        <div class="text-[10px] text-gold/70">({m.home_pen}–{m.away_pen} pen)</div>
+                      )}
+                      {winner && <div class="text-[9px] text-slate-500">{winner} ✓</div>}
+                    </td>
+                    {players.map((p: any) => {
+                      const c = cell(predMap[m.id]?.[p.id], m);
+                      return (
+                        <td class={`px-1 py-1.5 text-center ${c.bg}`}>
+                          <div class={`leading-tight ${c.cls}`}>{c.icon} {c.score}</div>
+                          {c.pen && <div class="text-[10px] text-slate-400 leading-none">p {c.pen}</div>}
+                          {c.pts !== null && <div class="text-[10px] text-slate-500 leading-none">{c.pts}p</div>}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+              <tr class="border-b border-brand-700 bg-brand-900">
+                <td colspan={2} class="px-3 py-1 text-[10px] text-slate-500 font-semibold">Subtotal {r}</td>
+                {players.map((p: any) => {
+                  const sub = byRound[r].reduce((s: number, m: any) => s + (predMap[m.id]?.[p.id]?.points_earned ?? 0), 0);
+                  return <td class="px-1 py-1 text-center font-display text-[11px] text-gold">{sub}</td>;
+                })}
+              </tr>
+            </>))}
+          </tbody>
+          <tfoot>
+            <tr class="border-t-2 border-brand-600 bg-brand-900">
+              <td colspan={2} class="px-3 py-2 text-sm font-bold text-white uppercase tracking-wide">TOTAL ELIMINATORIA</td>
+              {players.map((p: any) => (
+                <td class="px-1 py-2 text-center">
+                  <div class="font-display text-base text-gold">{elTotals[p.id]}</div>
+                  <div class="text-[9px] text-slate-500">pts</div>
+                </td>
+              ))}
+            </tr>
+          </tfoot>
+        </table>
+      )
+    }
+  </div>
+
+  <!-- Leyenda -->
+  {matches.length > 0 && (
+    <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600 pb-4 no-print">
+      <span class="text-gold">⭐ Exacto</span>
+      <span class="text-gol">✅ Resultado correcto</span>
+      <span class="text-slate-500">❌ Incorrecto</span>
+      <span>– Sin pronóstico</span>
+    </div>
+  )}
+
+</div>
+</Layout>
+
+<script>
+  function showTab(tab: 'grupos' | 'elim') {
+    const tg = document.getElementById('tab-grupos')!;
+    const te = document.getElementById('tab-elim')!;
+    const bg = document.getElementById('btn-grupos')!;
+    const be = document.getElementById('btn-elim')!;
+    const isGrupos = tab === 'grupos';
+    tg.classList.toggle('hidden', !isGrupos);
+    te.classList.toggle('hidden',  isGrupos);
+    tg.classList.toggle('print-active',  isGrupos);
+    te.classList.toggle('print-active', !isGrupos);
+    bg.className = isGrupos
+      ? 'text-sm px-4 py-2 rounded-xl border border-gold/50 bg-gold/10 text-gold font-semibold transition'
+      : 'text-sm px-4 py-2 rounded-xl border border-brand-600 bg-brand-800 text-slate-400 font-semibold transition hover:text-white';
+    be.className = !isGrupos
+      ? 'text-sm px-4 py-2 rounded-xl border border-gold/50 bg-gold/10 text-gold font-semibold transition'
+      : 'text-sm px-4 py-2 rounded-xl border border-brand-600 bg-brand-800 text-slate-400 font-semibold transition hover:text-white';
+  }
+  (window as any).showTab = showTab;
+</script>
