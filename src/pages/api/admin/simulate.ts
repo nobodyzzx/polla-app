@@ -55,7 +55,7 @@ export const POST: APIRoute = async ({ cookies, redirect }) => {
 
   const { data: allMatches } = await supabaseAdmin
     .from('matches')
-    .select('id, stage, jornada, is_finished, match_date, home_score, away_score')
+    .select('id, stage, jornada, is_finished, match_date, home_score, away_score, winner_penalties')
     .order('match_date', { ascending: true });
 
   if (!players?.length)    return redirect(`/admin?err=${encodeURIComponent('No hay jugadores registrados')}`);
@@ -144,8 +144,29 @@ export const POST: APIRoute = async ({ cookies, redirect }) => {
           ? biasedPred(rng, m.home_score, m.away_score)
           : { h: randScore(rng), a: randScore(rng) };
 
+        // Penales en fase eliminatoria
+        let homePen: number | null = null;
+        let awayPen: number | null = null;
+        let winnerPen: string | null = null;
+        if (m.stage === 'knockout') {
+          // Siempre predecir ganador en penales (por si acaso empatan)
+          if (sc === 'ESTRELLA' && m.winner_penalties) {
+            // Estrella acerta 70% del tiempo
+            winnerPen = rng() < 0.70 ? m.winner_penalties : (m.winner_penalties === 'home' ? 'away' : 'home');
+          } else {
+            winnerPen = rng() < 0.5 ? 'home' : 'away';
+          }
+          // Si predice empate, también genera marcador de penales
+          if (h === a) {
+            homePen = 3 + Math.floor(rng() * 4);
+            awayPen = 3 + Math.floor(rng() * 4);
+            if (homePen === awayPen) awayPen++;
+            winnerPen = homePen > awayPen ? 'home' : 'away';
+          }
+        }
+
         predRows.push({ user_id: player.id, match_id: m.id, user_home: h, user_away: a,
-          user_home_pen: null, user_away_pen: null, user_winner_penalties: null });
+          user_home_pen: homePen, user_away_pen: awayPen, user_winner_penalties: winnerPen });
       }
     }
 
