@@ -458,11 +458,11 @@ let globalFormIdx = 0;
     data.items.forEach(item => {
       const hf = item.homeISO ? flagFromISO(item.homeISO) : '';
       const af = item.awayISO ? flagFromISO(item.awayISO) : '';
-      lines.push(`${item.home} ${hf}(${item.uh}) vs (${item.ua}) ${af}${item.away}`);
+      lines.push(`${item.home} ${hf} ${item.uh}\u2013${item.ua} ${af} ${item.away}`);
       if (item.pen) {
-        const wf  = item.pen === 'home' ? hf : af;
+        const wf   = item.pen === 'home' ? hf : af;
         const wName = item.pen === 'home' ? item.home : item.away;
-        lines.push(`_Penales: ${wf} ${wName}_`);
+        lines.push(`_(pen \u00B7 clasifica ${wf} ${wName})_`);
       }
       lines.push('');
     });
