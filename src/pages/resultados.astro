@@ -57,6 +57,20 @@ function matchLabel(m: any): string {
   return m.round ?? m.jornada ?? '';
 }
 
+// Puntos por jornada por jugador
+const jornadaPoints: Record<string, Record<string, number>> = {};
+for (const jornada of jornadaOrder) {
+  jornadaPoints[jornada] = {};
+  for (const m of jornadaMatches[jornada]) {
+    const preds = predMap[(m as any).id] ?? {};
+    for (const [userId, pred] of Object.entries(preds) as [string, any][]) {
+      if (pred.points_earned !== null) {
+        jornadaPoints[jornada][userId] = (jornadaPoints[jornada][userId] ?? 0) + pred.points_earned;
+      }
+    }
+  }
+}
+
 // Datos para compartir (se serializan como JSON al cliente)
 const shareData = jornadaOrder.map((jornada) => ({
   jornada,
@@ -226,6 +240,39 @@ function predStyle(pred: any, m: any): string {
             </div>
           );
         })}
+
+        {/* Ranking de puntos de la jornada */}
+        {(() => {
+          const pts = jornadaPoints[jornada] ?? {};
+          const sorted = Object.entries(pts).sort(([, a], [, b]) => (b as number) - (a as number));
+          const playerMap = Object.fromEntries(players.map((p: any) => [p.id, p.username]));
+          if (sorted.length === 0) return null;
+          return (
+            <div class="bg-brand-900 border border-gold/20 rounded-2xl p-4">
+              <h3 class="text-xs font-semibold text-gold uppercase tracking-widest mb-3">📊 Puntos {jornada}</h3>
+              <div class="flex flex-col gap-1.5">
+                {sorted.map(([userId, total], i) => {
+                  const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
+                  const isMe = userId === user.id;
+                  return (
+                    <div class={`flex items-center justify-between rounded-xl px-3 py-1.5 ${isMe ? 'bg-gold/8 border border-gold/20' : 'bg-brand-800/40'}`}>
+                      <div class="flex items-center gap-2">
+                        <span class="text-sm w-6 text-center">{medal}</span>
+                        <span class={`text-sm ${isMe ? 'text-gold font-semibold' : 'text-slate-300'}`}>
+                          {playerMap[userId] ?? '?'}
+                          {isMe && <span class="text-[10px] text-gold/70 ml-1">← tú</span>}
+                        </span>
+                      </div>
+                      <span class={`font-display text-xl ${(total as number) >= 6 ? 'text-gold' : (total as number) >= 3 ? 'text-gol' : 'text-slate-400'}`}>
+                        {total as number}<span class="text-xs text-slate-500 font-sans ml-0.5">pts</span>
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
 
       </div>
     ))}
