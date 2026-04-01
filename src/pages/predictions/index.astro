@@ -228,10 +228,11 @@ let globalFormIdx = 0;
             </div>
             <div class="flex items-center gap-2 flex-shrink-0">
               <span class={`text-xs px-2 py-1 rounded-full border ${
-                allDone ? 'text-gol border-gol/30 bg-gol/10' :
-                hasSome ? 'text-amarilla border-amarilla/30 bg-amarilla/10' :
-                closed  ? 'text-fifared border-fifared/30 bg-fifared/10' :
-                          'text-slate-500 border-brand-600 bg-brand-700/30'
+                allDone    ? 'text-gol border-gol/30 bg-gol/10' :
+                hasSome    ? 'text-amarilla border-amarilla/30 bg-amarilla/10' :
+                prevPending ? 'text-slate-600 border-brand-700/40 bg-brand-800/40' :
+                closed     ? 'text-fifared border-fifared/30 bg-fifared/10' :
+                              'text-slate-500 border-brand-600 bg-brand-700/30'
               }`}>
                 {allDone ? '✅ Completa' : hasSome ? `${predCount}/${jornadaMatches.length}` : closed ? 'Sin pronóstico' : `0/${jornadaMatches.length}`}
               </span>
@@ -391,7 +392,7 @@ let globalFormIdx = 0;
                 const homeISO = isoForTeam(m.home_team);
                 const awayISO = isoForTeam(m.away_team);
                 return (
-                  <div class={`bg-brand-900 border rounded-2xl p-4 ${existing ? 'border-gol/30 bg-gol/5' : 'border-fifared/30 bg-fifared/5'}`}>
+                  <div class={`bg-brand-900 border rounded-2xl p-4 ${existing ? 'border-gol/30 bg-gol/5' : prevPending ? 'border-brand-700/40 bg-brand-800/30' : 'border-fifared/30 bg-fifared/5'}`}>
                     <div class="flex items-center justify-between mb-2 text-xs">
                       <span class="text-slate-500">
                         {m.stage === 'group' ? (m.group_name ? `Grupo ${m.group_name}` : m.jornada) : m.round}
