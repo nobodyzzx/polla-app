@@ -260,14 +260,14 @@ function accentLine(i: number, isMe: boolean) {
           <div class="flex flex-wrap gap-x-6 gap-y-1 text-sm">
             {pagosDeadline70 && (
               <span class={expired70 ? 'text-fifared font-semibold' : 'text-slate-200'}>
-                <span class="text-slate-400 text-xs mr-1">70 Bs →</span>
+                <span class="text-slate-400 text-sm mr-1">70 Bs →</span>
                 <strong>{fmtDeadline(pagosDeadline70)}</strong>
                 {expired70 && <span class="ml-1">🔒</span>}
               </span>
             )}
             {pagosDeadline50 && (
               <span class={expired50 ? 'text-fifared font-semibold' : 'text-slate-200'}>
-                <span class="text-slate-400 text-xs mr-1">50 Bs →</span>
+                <span class="text-slate-400 text-sm mr-1">50 Bs →</span>
                 <strong>{fmtDeadline(pagosDeadline50)}</strong>
                 {expired50 && <span class="ml-1">🔒</span>}
               </span>
