@@ -318,16 +318,18 @@ function accentLine(i: number, isMe: boolean) {
 
     <!-- POZO PARCIAL -->
     {(() => {
+      const soloPrimero = countPago70 - countPago50;
+      const pozoActual = countPago50 * 100 + soloPrimero * 50;
       const maxPozo = rows.length * 100;
-      const pct = maxPozo > 0 ? Math.round(pozoTotal / maxPozo * 100) : 0;
+      const pct = maxPozo > 0 ? Math.round(pozoActual / maxPozo * 100) : 0;
       return (
         <div class="bg-brand-900 border border-brand-800 rounded-2xl px-5 py-4 space-y-3">
           <div class="flex items-center justify-between">
             <span class="text-xs text-slate-500 uppercase tracking-wide">💰 Pozo actual</span>
-            <span class="text-xs text-slate-500">{countPago50} / {rows.length} pagaron completo</span>
+            <span class="text-xs text-slate-500">{countPago50} completo · {soloPrimero} parcial · {rows.length - countPago70} sin pago</span>
           </div>
           <div class="flex items-end gap-3">
-            <span class="font-display text-4xl text-gold leading-none">{pozoTotal}</span>
+            <span class="font-display text-4xl text-gold leading-none">{pozoActual}</span>
             <span class="text-slate-500 text-sm mb-1">Bs de <strong class="text-slate-300">{maxPozo} Bs</strong> posibles</span>
           </div>
           <div class="space-y-1">
