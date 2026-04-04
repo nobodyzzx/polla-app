@@ -251,19 +251,29 @@ function accentLine(i: number, isMe: boolean) {
       )}
     </div>
     {(pagosDeadline70 || pagosDeadline50) && (
-      <div class="text-xs space-y-0.5">
-        {pagosDeadline70 && (
-          <div class={expired70 ? 'text-fifared' : 'text-slate-500'}>
-            💰 70 Bs: hasta <span class="font-medium">{fmtDeadline(pagosDeadline70)}</span>
-            {expired70 && ' 🔒'}
+      <div class="relative rounded-2xl overflow-hidden">
+        {!pagosExpired && <div class="absolute inset-0 bg-linear-to-r from-gold/10 via-gold/25 to-gold/10 animate-deadline-shimmer bg-size-[200%_100%]"></div>}
+        <div class={`relative flex flex-wrap gap-x-6 gap-y-2 items-center px-4 py-3 rounded-2xl border ${pagosExpired ? 'border-fifared/40 bg-fifared/5' : 'border-gold/40'}`}>
+          <span class={`text-xs font-bold tracking-widest uppercase ${pagosExpired ? 'text-fifared' : 'text-gold animate-pulse-slow'}`}>
+            💰 Fechas de pago
+          </span>
+          <div class="flex flex-wrap gap-x-6 gap-y-1 text-sm">
+            {pagosDeadline70 && (
+              <span class={expired70 ? 'text-fifared font-semibold' : 'text-slate-200'}>
+                <span class="text-slate-400 text-xs mr-1">70 Bs →</span>
+                <strong>{fmtDeadline(pagosDeadline70)}</strong>
+                {expired70 && <span class="ml-1">🔒</span>}
+              </span>
+            )}
+            {pagosDeadline50 && (
+              <span class={expired50 ? 'text-fifared font-semibold' : 'text-slate-200'}>
+                <span class="text-slate-400 text-xs mr-1">50 Bs →</span>
+                <strong>{fmtDeadline(pagosDeadline50)}</strong>
+                {expired50 && <span class="ml-1">🔒</span>}
+              </span>
+            )}
           </div>
-        )}
-        {pagosDeadline50 && (
-          <div class={expired50 ? 'text-fifared' : 'text-slate-500'}>
-            💰 50 Bs: hasta <span class="font-medium">{fmtDeadline(pagosDeadline50)}</span>
-            {expired50 && ' 🔒'}
-          </div>
-        )}
+        </div>
       </div>
     )}
 
@@ -635,3 +645,16 @@ function accentLine(i: number, isMe: boolean) {
   });
 })();
 </script>
+
+<style>
+  @keyframes deadline-shimmer {
+    0%   { background-position: 200% center; }
+    100% { background-position: -200% center; }
+  }
+  @keyframes pulse-slow {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.55; }
+  }
+  .animate-deadline-shimmer { animation: deadline-shimmer 3s linear infinite; }
+  .animate-pulse-slow       { animation: pulse-slow 2s ease-in-out infinite; }
+</style>
