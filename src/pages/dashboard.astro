@@ -199,7 +199,7 @@ function rowStyle(i: number, isMe: boolean) {
   if (i === 0) return 'bg-yellow-500/10 border border-yellow-500/35';
   if (i === 1) return 'bg-slate-400/10 border border-slate-400/30';
   if (i === 2) return 'bg-amber-700/10 border border-amber-700/30';
-  return 'bg-brand-900 border border-brand-800/60';
+  return i % 2 === 0 ? 'bg-brand-900 border border-brand-800/60' : 'bg-brand-800/40 border border-brand-700/40';
 }
 function pointColor(i: number, isMe: boolean) {
   if (isMe) return 'text-brand-400';
@@ -455,7 +455,7 @@ function accentLine(i: number, isMe: boolean) {
               const gap = leaderPoints - p.puntos_totales;
               const isMe = p.id === user.id;
               return (
-                <tr class={`border-b border-brand-800/40 ${isMe ? 'bg-brand-700/20' : i === 0 ? 'bg-yellow-500/8' : i === 1 ? 'bg-slate-400/5' : i === 2 ? 'bg-amber-700/8' : ''}`}>
+                <tr class={`border-b border-brand-800/40 ${isMe ? 'bg-brand-700/20' : i === 0 ? 'bg-yellow-500/8' : i === 1 ? 'bg-slate-400/5' : i === 2 ? 'bg-amber-700/8' : i % 2 === 0 ? '' : 'bg-brand-800/30'}`}>
                   <td class="py-3 pl-0 pr-4 font-mono text-lg w-10">
                     <div class="flex items-center gap-2 h-full">
                       <div class={`w-[3px] h-8 rounded-full bg-gradient-to-b flex-shrink-0 ${accentLine(i, isMe)}`} />
