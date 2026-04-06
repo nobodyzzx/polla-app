@@ -286,28 +286,40 @@ function accentLine(i: number, isMe: boolean) {
     <!-- STATS CARDS -->
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
       <!-- Participantes -->
-      <div class="bg-brand-900 border border-brand-800 rounded-2xl px-4 py-3 flex flex-col gap-1">
-        <span class="text-xs text-slate-500 uppercase tracking-wide">Jugadores</span>
-        <span class="font-display text-3xl text-white">{rows.length}</span>
+      <div class="relative overflow-hidden rounded-2xl px-4 py-3 flex flex-col gap-1">
+        <div class="absolute inset-0 bg-gradient-to-br from-violet-600 to-indigo-800"></div>
+        <div class="absolute -top-4 -right-4 w-16 h-16 bg-white/10 rounded-full blur-xl"></div>
+        <span class="relative text-xs text-white/70 uppercase tracking-wide">Jugadores</span>
+        <span class="relative text-2xl">👥</span>
+        <span class="relative font-display text-3xl text-white leading-none">{rows.length}</span>
       </div>
 
       <!-- Pagaron completo -->
-      <div class="bg-brand-900 border border-brand-800 rounded-2xl px-4 py-3 flex flex-col gap-1">
-        <span class="text-xs text-slate-500 uppercase tracking-wide">Pago completo</span>
-        <span class="font-display text-3xl text-gol">{countPago50}<span class="text-slate-600 text-base font-sans"> / {rows.length}</span></span>
+      <div class="relative overflow-hidden rounded-2xl px-4 py-3 flex flex-col gap-1">
+        <div class="absolute inset-0 bg-gradient-to-br from-emerald-600 to-teal-800"></div>
+        <div class="absolute -top-4 -right-4 w-16 h-16 bg-white/10 rounded-full blur-xl"></div>
+        <span class="relative text-xs text-white/70 uppercase tracking-wide">Pago completo</span>
+        <span class="relative text-2xl">✅</span>
+        <span class="relative font-display text-3xl text-white leading-none">{countPago50}<span class="text-white/40 text-base font-sans"> / {rows.length}</span></span>
       </div>
 
       <!-- Próximo partido -->
       {nextMatch ? (
-        <div class="bg-brand-900 border border-brand-800 rounded-2xl px-4 py-3 flex flex-col gap-1">
-          <span class="text-xs text-slate-500 uppercase tracking-wide">Próximo partido</span>
-          <span class="font-display text-3xl text-white">{countdownLabel(nextMatch.match_date)}</span>
-          <span class="text-xs text-slate-600 truncate">{spanishName(nextMatch.home_team)} vs {spanishName(nextMatch.away_team)}</span>
+        <div class="relative overflow-hidden rounded-2xl px-4 py-3 flex flex-col gap-1">
+          <div class="absolute inset-0 bg-gradient-to-br from-amber-500 to-orange-700"></div>
+          <div class="absolute -top-4 -right-4 w-16 h-16 bg-white/10 rounded-full blur-xl"></div>
+          <span class="relative text-xs text-white/70 uppercase tracking-wide">Próximo partido</span>
+          <span class="relative text-2xl">⚽</span>
+          <span class="relative font-display text-3xl text-white leading-none">{countdownLabel(nextMatch.match_date)}</span>
+          <span class="relative text-xs text-white/60 truncate">{spanishName(nextMatch.home_team)} vs {spanishName(nextMatch.away_team)}</span>
         </div>
       ) : (
-        <div class="bg-brand-900 border border-brand-800 rounded-2xl px-4 py-3 flex flex-col gap-1">
-          <span class="text-xs text-slate-500 uppercase tracking-wide">Próximo partido</span>
-          <span class="text-sm text-slate-600">Sin partidos próximos</span>
+        <div class="relative overflow-hidden rounded-2xl px-4 py-3 flex flex-col gap-1">
+          <div class="absolute inset-0 bg-gradient-to-br from-amber-500 to-orange-700"></div>
+          <div class="absolute -top-4 -right-4 w-16 h-16 bg-white/10 rounded-full blur-xl"></div>
+          <span class="relative text-xs text-white/70 uppercase tracking-wide">Próximo partido</span>
+          <span class="relative text-2xl">⚽</span>
+          <span class="relative text-sm text-white/50">Sin partidos próximos</span>
         </div>
       )}
       <!-- Pagar QR -->
