@@ -9,14 +9,22 @@ import type { APIRoute } from 'astro';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getFixtures, getFinishedMatches, deriveWinnerPenalties } from '@/lib/football-api';
 
-function timingSafeEqual(a: string, b: string): boolean {
+async function timingSafeEqual(a: string, b: string): Promise<boolean> {
   try {
-    const ab = new TextEncoder().encode(a);
-    const bb = new TextEncoder().encode(b);
-    if (ab.byteLength !== bb.byteLength) return false;
-    return crypto.subtle
-      ? true // fallback: length check only in edge (subtle is async)
-      : a === b;
+    const enc = new TextEncoder();
+    const ab = enc.encode(a);
+    const bb = enc.encode(b);
+    // Longitudes distintas → falso, pero seguimos para no filtrar por timing
+    const key = await crypto.subtle.importKey('raw', ab, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+    const [sigA, sigB] = await Promise.all([
+      crypto.subtle.sign('HMAC', key, ab),
+      crypto.subtle.sign('HMAC', key, bb),
+    ]);
+    const da = new Uint8Array(sigA);
+    const db = new Uint8Array(sigB);
+    let diff = da.length ^ db.length;
+    for (let i = 0; i < Math.min(da.length, db.length); i++) diff |= da[i] ^ db[i];
+    return diff === 0 && ab.byteLength === bb.byteLength;
   } catch {
     return false;
   }
@@ -31,7 +39,7 @@ export const GET: APIRoute = async ({ url, request }) => {
   const querySecret = url.searchParams.get('secret') ?? '';
   const secret = bearer || querySecret;
 
-  if (!expected || !secret || secret.length !== expected.length || !timingSafeEqual(secret, expected)) {
+  if (!expected || !secret || !(await timingSafeEqual(secret, expected))) {
     return json({ error: 'Unauthorized' }, 401);
   }
 

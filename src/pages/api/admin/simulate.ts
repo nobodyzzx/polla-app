@@ -1,3 +1,7 @@
+// TODO ANTES DEL TORNEO: deshabilitar o eliminar este endpoint en producción.
+// Junto con: simulate-results.ts, advance-dates.ts, seed-demo.ts, seed-knockout.ts,
+// clear-matches.ts, run-tests.ts. Todos están protegidos por getAdminUser (réferi),
+// pero no deberían existir en producción real.
 import type { APIRoute } from 'astro';
 import { supabase, supabaseAdmin } from '@/lib/supabase';
 import { getAdminUser } from '@/lib/auth-helpers';
