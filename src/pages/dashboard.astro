@@ -633,9 +633,10 @@ function accentLine(i: number, isMe: boolean) {
   }
 
   function waShare(text) {
-    // Web Share API: disponible en iOS Safari y Android Chrome — abre el selector nativo
-    if (navigator.share) {
-      navigator.share({ text: text }).catch(function () {});
+    var isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    if (isMobile) {
+      // location.href no puede ser bloqueado por el navegador (es navegación, no popup)
+      location.href = 'https://wa.me/?text=' + encodeURIComponent(text);
       return;
     }
     // Desktop: copiar al portapapeles
