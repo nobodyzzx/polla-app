@@ -45,19 +45,19 @@ const { data: profile } = await supabaseAdmin
         <div class="flex items-center justify-between">
           <div>
             <span class="text-sm text-slate-300">1er pago — 70 Bs</span>
-            <p class="text-xs text-slate-600">Habilitación para pronosticar</p>
+            <p class="text-xs text-slate-600">{profile?.pago_70 ? 'Pronósticos habilitados' : 'Sin esto no puedes pronosticar'}</p>
           </div>
-          <span class={`text-xs px-3 py-1 rounded-full font-semibold ${profile?.pago_70 ? 'bg-gol/20 text-green-300 border border-gol/30' : 'bg-brand-800 text-slate-500 border border-brand-700'}`}>
-            {profile?.pago_70 ? '✓ Pagado' : '✗ Pendiente'}
+          <span class={`text-xs px-3 py-1 rounded-full font-semibold ${profile?.pago_70 ? 'bg-gol/20 text-green-300 border border-gol/30' : 'bg-amber-900/30 text-amber-400 border border-amber-500/40'}`}>
+            {profile?.pago_70 ? '✓ Pagado' : '⚠️ Pronósticos bloqueados'}
           </span>
         </div>
         <div class="flex items-center justify-between">
           <div>
             <span class="text-sm text-slate-300">2do pago — 50 Bs</span>
-            <p class="text-xs text-slate-600">Completa tu participación</p>
+            <p class="text-xs text-slate-600">{profile?.pago_50 ? 'Participación completa' : 'Sin esto solo aportas 50 Bs al pozo'}</p>
           </div>
           <span class={`text-xs px-3 py-1 rounded-full font-semibold ${profile?.pago_50 ? 'bg-gol/20 text-green-300 border border-gol/30' : 'bg-brand-800 text-slate-500 border border-brand-700'}`}>
-            {profile?.pago_50 ? '✓ Pagado' : '✗ Pendiente'}
+            {profile?.pago_50 ? '✓ Pagado' : '⚠️ Pozo incompleto'}
           </span>
         </div>
       </div>

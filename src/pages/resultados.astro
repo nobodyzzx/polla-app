@@ -245,11 +245,11 @@ function predStyle(pred: any, m: any): string {
                                 )}
                               </div>
                             ) : (
-                              <span class="text-slate-700">—</span>
+                              <span class="text-slate-700" title="No pronosticó este partido">—</span>
                             )}
                           </td>
                           <td class="px-3 py-2 text-center">
-                            <span class={`font-display text-lg font-bold ${ptsColor(pred?.points_earned ?? null)}`}>
+                            <span class={`font-display text-lg font-bold ${ptsColor(pred?.points_earned ?? null)}`} title={!pred ? 'Sin pronóstico — 0 pts' : undefined}>
                               {pred ? (pred.points_earned ?? 0) : '—'}
                             </span>
                           </td>

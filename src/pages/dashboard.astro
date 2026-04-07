@@ -569,10 +569,10 @@ function accentLine(i: number, isMe: boolean) {
                     lockState === 'prevPending' ? 'text-slate-500' :
                     'text-gol'
                   }`}>
-                    {lockState === 'pago'        ? '🔒 Pago pendiente' :
+                    {lockState === 'pago'        ? '🔒 Requiere pago completo' :
                      lockState === 'closed'      ? '🔒 Cerrado' :
-                     lockState === 'ongoingLock' ? '⏳ En curso' :
-                     lockState === 'prevPending' ? '⏳ Pendiente' :
+                     lockState === 'ongoingLock' ? '⏳ Partido en curso' :
+                     lockState === 'prevPending' ? '⏳ Espera la jornada anterior' :
                      `⏱ ${tiempoRestante(m.match_date)}`}
                   </span>
                 </div>

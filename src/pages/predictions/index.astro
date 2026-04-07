@@ -234,7 +234,17 @@ let globalFormIdx = 0;
                 closed     ? 'text-fifared border-fifared/30 bg-fifared/10' :
                               'text-slate-500 border-brand-600 bg-brand-700/30'
               }`}>
-                {allDone ? '✅ Completa' : hasSome ? `${predCount}/${jornadaMatches.length}` : closed ? 'Sin pronóstico' : `0/${jornadaMatches.length}`}
+                {allDone
+                  ? '✅ Completa'
+                  : hasSome
+                  ? `${predCount}/${jornadaMatches.length}`
+                  : prevPending
+                  ? '⏳ Jornada anterior abierta'
+                  : ongoingLock
+                  ? '⏳ Partido en curso'
+                  : closed
+                  ? '🔒 Cerrada sin pronóstico'
+                  : `0/${jornadaMatches.length}`}
               </span>
               {hasSome && (
                 <button
