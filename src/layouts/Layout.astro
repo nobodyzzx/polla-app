@@ -26,7 +26,7 @@ const pathname = Astro.url.pathname;
 const navLink = (href: string) => {
   const active = pathname === href || (href !== '/' && pathname.startsWith(href));
   return active
-    ? 'flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-800 text-white font-semibold text-sm transition'
+    ? 'flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gold/15 text-gold font-semibold text-sm border border-gold/25 transition'
     : 'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-brand-800/50 transition text-sm';
 };
 
@@ -275,7 +275,7 @@ if (!isAuthed) {
 
             {/* ── Desktop: perfil + salir ── */}
             <div class="hidden sm:flex items-center gap-1 flex-shrink-0">
-              <a href="/perfil" class={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition ${pathname === '/perfil' ? 'bg-brand-800 text-white' : 'hover:bg-brand-800/50 text-slate-300'}`}>
+              <a href="/perfil" class={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition ${pathname === '/perfil' ? 'bg-gold/15 text-gold border border-gold/25' : 'hover:bg-brand-800/50 text-slate-300'}`}>
                 <span class="w-6 h-6 rounded-full bg-gradient-to-br from-gold/60 to-gold/30 flex items-center justify-center text-[11px] font-bold text-brand-950 flex-shrink-0">
                   {(profile?.username ?? '?')[0].toUpperCase()}
                 </span>
@@ -294,10 +294,10 @@ if (!isAuthed) {
             {/* ── Mobile: accesos rápidos + hamburguesa ── */}
             <div class="flex sm:hidden items-center gap-1">
               <a href="/predictions"
-                class={`flex items-center justify-center w-10 h-10 rounded-lg transition text-lg ${pathname.startsWith('/predictions') ? 'bg-brand-800 text-white' : 'text-slate-400 active:bg-brand-800'}`}
+                class={`flex items-center justify-center w-10 h-10 rounded-lg transition text-lg ${pathname.startsWith('/predictions') ? 'bg-gold/15 text-gold border border-gold/25' : 'text-slate-400 active:bg-brand-800'}`}
                 title="Pronósticos">📅</a>
               <a href="/perfil"
-                class={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs transition ${pathname === '/perfil' ? 'bg-brand-800 text-white' : 'text-slate-300 active:bg-brand-800'}`}>
+                class={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs transition ${pathname === '/perfil' ? 'bg-gold/15 border border-gold/25' : 'text-slate-300 active:bg-brand-800'}`}>
                 <span class="w-5 h-5 rounded-full bg-gradient-to-br from-gold/60 to-gold/30 flex items-center justify-center text-[10px] font-bold text-brand-950">
                   {(profile?.username ?? '?')[0].toUpperCase()}
                 </span>
@@ -314,10 +314,10 @@ if (!isAuthed) {
           </>
         ) : (
           <div class="flex items-center gap-2">
-            <a href="/reglas" class={`text-sm px-3 py-1.5 rounded-lg transition ${pathname === '/reglas' ? 'bg-brand-800 text-white' : 'text-slate-400 hover:text-white hover:bg-brand-800/50'}`}>
+            <a href="/reglas" class={`text-sm px-3 py-1.5 rounded-lg transition ${pathname === '/reglas' ? 'bg-gold/15 text-gold border border-gold/25' : 'text-slate-400 hover:text-white hover:bg-brand-800/50'}`}>
               📖 Reglas
             </a>
-            <a href="/pago" class={`text-sm px-3 py-1.5 rounded-lg transition ${pathname === '/pago' ? 'bg-brand-800 text-white' : 'text-slate-400 hover:text-white hover:bg-brand-800/50'}`}>
+            <a href="/pago" class={`text-sm px-3 py-1.5 rounded-lg transition ${pathname === '/pago' ? 'bg-gold/15 text-gold border border-gold/25' : 'text-slate-400 hover:text-white hover:bg-brand-800/50'}`}>
               💰 Cómo pagar
             </a>
             <a href="/login" class="bg-gold text-brand-950 font-bold px-4 py-2 flex items-center rounded-lg transition text-sm active:opacity-80">
