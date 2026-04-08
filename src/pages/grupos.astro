@@ -257,14 +257,14 @@ function fmtDateShort(d: string) {
       )}
 
       {sortedRounds.length > 0 && (
-        <div class="overflow-x-auto -mx-4 px-4 pb-4">
-          <div class="flex gap-3 min-w-max items-start">
+        <div style="overflow-x:auto; padding-bottom:16px;">
+          <div style="display:flex; gap:12px; align-items:flex-start; width:max-content; min-width:100%;">
 
             {sortedRounds.map(([round, rMatches]: [string, any[]]) => {
               const isFinal = round === 'Final';
               const is3rd   = round === 'Tercer Puesto';
               return (
-                <div class="flex flex-col gap-1.5 w-44">
+                <div style="display:flex; flex-direction:column; gap:6px; width:180px; flex-shrink:0;">
 
                   {/* Cabecera de ronda */}
                   <div class={`text-center text-[10px] font-bold uppercase tracking-widest py-1.5 px-2 rounded-lg mb-1 ${
@@ -277,7 +277,7 @@ function fmtDateShort(d: string) {
                   </div>
 
                   {/* Partidos */}
-                  <div class="flex flex-col gap-2">
+                  <div style="display:flex; flex-direction:column; gap:8px;">
                     {rMatches.map((m: any) => {
                       const finished  = m.is_finished;
                       const hs        = m.home_score as number | null;
