@@ -19,7 +19,7 @@ const { data: profile } = await supabaseAdmin
   .single();
 ---
 
-<Layout title="Mi Perfil" navProfile={profile} isAuthed={true}>
+<Layout title="Mi Perfil" navProfile={profile} isAuthed={true} userId={user.id}>
   <div class="max-w-md mx-auto space-y-6">
 
     <h1 class="font-display text-4xl text-white tracking-wide">MI PERFIL</h1>
