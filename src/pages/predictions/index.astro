@@ -291,8 +291,7 @@ let globalFormIdx = 0;
                       <span class="text-slate-400 font-medium text-xs">
                         {m.stage === 'group' ? (m.group_name ? `Grupo ${m.group_name}` : m.jornada) : m.round}
                       </span>
-                      <span class="font-display text-xl font-bold text-white">{formatTime(m.match_date)}</span>
-                      <span class="text-slate-500 text-xs">{new Date(m.match_date).toLocaleDateString('es-BO', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'America/La_Paz' })}</span>
+                      <span class="text-slate-500 text-xs">{formatDate(m.match_date)}</span>
                     </div>
 
                     {/* Equipos + inputs */}
@@ -420,8 +419,7 @@ let globalFormIdx = 0;
                       <span class="text-slate-400 font-medium text-xs">
                         {m.stage === 'group' ? (m.group_name ? `Grupo ${m.group_name}` : m.jornada) : m.round}
                       </span>
-                      <span class="font-display text-xl font-bold text-white">{formatTime(m.match_date)}</span>
-                      <span class="text-slate-500 text-xs">{new Date(m.match_date).toLocaleDateString('es-BO', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'America/La_Paz' })}</span>
+                      <span class="text-slate-500 text-xs">{formatDate(m.match_date)}</span>
                     </div>
                     <div class="flex items-center gap-2">
                       <div class="flex-1 text-right">
@@ -433,7 +431,7 @@ let globalFormIdx = 0;
                       <div class="flex-shrink-0 px-2 text-center min-w-[60px]">
                         {existing
                           ? <span class="text-gol font-display text-2xl">{existing.user_home}–{existing.user_away}</span>
-                          : <span class="text-white font-display text-2xl font-bold">{formatTime(m.match_date)}</span>
+                          : <span class="text-slate-700 font-bold text-xl">–</span>
                         }
                       </div>
                       <div class="flex-1">
