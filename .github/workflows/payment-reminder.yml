@@ -2,7 +2,7 @@ name: Daily Payment Reminder
 
 on:
   schedule:
-    - cron: '0 13 * * *'   # 9:00 AM Bolivia (UTC-4)
+    - cron: '30 13 * * *'  # 9:30 AM Bolivia (UTC-4)
   workflow_dispatch:         # permite ejecutarlo manualmente desde GitHub
 
 jobs:
