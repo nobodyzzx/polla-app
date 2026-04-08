@@ -245,9 +245,9 @@ function fmtDateShort(d: string) {
     </div>
 
     {/* ══════════════════════════════════════════
-        TAB: ELIMINATORIAS
+        TAB: ELIMINATORIAS — Bracket visual
     ══════════════════════════════════════════ */}
-    <div id="tab-eliminatorias" class="hidden space-y-6">
+    <div id="tab-eliminatorias" class="hidden">
 
       {sortedRounds.length === 0 && (
         <div class="text-center py-20 text-slate-600">
@@ -256,117 +256,119 @@ function fmtDateShort(d: string) {
         </div>
       )}
 
-      {sortedRounds.map(([round, rMatches]) => {
-        const isFinal   = round === 'Final';
-        const is3rd     = round === 'Tercer Puesto';
-        const isLate    = isFinal || is3rd;
-        return (
-          <div class="space-y-3">
+      {sortedRounds.length > 0 && (
+        <div class="overflow-x-auto -mx-4 px-4 pb-4">
+          <div class="flex gap-3 min-w-max items-start">
 
-            {/* Cabecera de ronda */}
-            <div class="flex items-center gap-3">
-              <div class={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider border ${
-                isFinal ? 'bg-gold/15 border-gold/50 text-gold' :
-                is3rd   ? 'bg-slate-700/40 border-slate-600/50 text-slate-400' :
-                          'bg-brand-800/60 border-brand-700 text-slate-400'
-              }`}>
-                {isFinal && '🏆 '}{round}
-              </div>
-              <div class="flex-1 h-px bg-brand-800" />
-              <span class="text-xs text-slate-600">{rMatches?.length} partido{(rMatches?.length ?? 0) !== 1 ? 's' : ''}</span>
-            </div>
+            {sortedRounds.map(([round, rMatches]: [string, any[]]) => {
+              const isFinal = round === 'Final';
+              const is3rd   = round === 'Tercer Puesto';
+              return (
+                <div class="flex flex-col gap-1.5 w-44">
 
-            {/* Partidos de la ronda */}
-            <div class={`grid gap-2 ${(rMatches?.length ?? 0) > 1 ? 'sm:grid-cols-2' : ''}`}>
-              {(rMatches ?? []).map((m: any) => {
-                const finished = m.is_finished;
-                const hs = m.home_score as number | null;
-                const as_ = m.away_score as number | null;
-                const homeWon = finished && hs !== null && as_ !== null && (hs > as_ || (hs === as_ && m.winner_penalties === 'home'));
-                const awayWon = finished && hs !== null && as_ !== null && (as_ > hs || (hs === as_ && m.winner_penalties === 'away'));
-                const isTBDHome = m.home_team?.startsWith('TBD') || !m.home_team;
-                const isTBDAway = m.away_team?.startsWith('TBD') || !m.away_team;
-
-                return (
-                  <div class={`border rounded-2xl overflow-hidden ${
-                    isFinal ? 'border-gold/40 bg-gradient-to-b from-gold/5 to-brand-900' :
-                    is3rd   ? 'border-slate-600/40 bg-brand-900' :
-                              'border-brand-700/60 bg-brand-900'
+                  {/* Cabecera de ronda */}
+                  <div class={`text-center text-[10px] font-bold uppercase tracking-widest py-1.5 px-2 rounded-lg mb-1 ${
+                    isFinal ? 'bg-gold/15 text-gold border border-gold/30' :
+                    is3rd   ? 'bg-brand-800/60 text-slate-500 border border-brand-700/40' :
+                              'bg-brand-800/60 text-slate-400 border border-brand-700/40'
                   }`}>
+                    {isFinal ? '🏆 ' : ''}{round}
+                    <span class="text-slate-600 font-normal ml-1">({rMatches.length})</span>
+                  </div>
 
-                    {/* Fecha si no está terminado */}
-                    {!finished && (
-                      <div class="px-4 pt-2.5 text-center">
-                        <span class="text-[11px] text-slate-500">{fmtDateShort(m.match_date)}</span>
-                      </div>
-                    )}
+                  {/* Partidos */}
+                  <div class="flex flex-col gap-2">
+                    {rMatches.map((m: any) => {
+                      const finished  = m.is_finished;
+                      const hs        = m.home_score as number | null;
+                      const as_       = m.away_score as number | null;
+                      const homeWon   = finished && hs !== null && as_ !== null && (hs > as_ || (hs === as_ && m.winner_penalties === 'home'));
+                      const awayWon   = finished && hs !== null && as_ !== null && (as_ > hs || (hs === as_ && m.winner_penalties === 'away'));
+                      const isTBDHome = !m.home_team || m.home_team.startsWith('TBD') || m.home_team.startsWith('Winner');
+                      const isTBDAway = !m.away_team || m.away_team.startsWith('TBD') || m.away_team.startsWith('Winner');
 
-                    {/* Partido */}
-                    <div class="px-4 py-3 flex items-center gap-3">
+                      return (
+                        <div class={`rounded-xl overflow-hidden border ${
+                          isFinal ? 'border-gold/40 bg-gradient-to-b from-gold/5 to-brand-900' :
+                          is3rd   ? 'border-slate-700/50 bg-brand-900' :
+                                    'border-brand-700/50 bg-brand-900'
+                        }`}>
 
-                      {/* Local */}
-                      <div class="flex-1 text-right min-w-0 space-y-0.5">
-                        {isTBDHome ? (
-                          <span class="text-xs text-slate-600 italic block">Clasifica de fase anterior</span>
-                        ) : (
-                          <div class={`flex items-center justify-end gap-1.5 ${
-                            finished ? (homeWon ? 'text-white' : 'text-slate-500') : 'text-slate-200'
-                          }`}>
-                            <span class="text-sm font-semibold truncate">{spanishName(m.home_team)}</span>
-                            {flagUrl(m.home_team, '20x15') && <img src={flagUrl(m.home_team, '20x15')!} width="20" height="15" class="flex-shrink-0 rounded-sm" loading="lazy" />}
-                          </div>
-                        )}
-                        {finished && homeWon && <span class="text-[10px] text-gold block">GANADOR</span>}
-                      </div>
-
-                      {/* Marcador */}
-                      <div class="flex-shrink-0 text-center min-w-[72px] space-y-0.5">
-                        {finished ? (
-                          <>
-                            <div class={`font-display text-2xl leading-none ${isFinal ? 'text-gold' : 'text-white'}`}>
-                              {hs} – {as_}
+                          {/* Fecha si no terminó */}
+                          {!finished && !isTBDHome && (
+                            <div class="text-center pt-1.5 pb-0.5">
+                              <span class="text-[9px] text-slate-600">{fmtDateShort(m.match_date)}</span>
                             </div>
-                            {m.winner_penalties && (
+                          )}
+
+                          {/* Local */}
+                          <div class={`flex items-center gap-1.5 px-2.5 pt-2 pb-1 ${homeWon ? '' : finished ? 'opacity-45' : ''}`}>
+                            {isTBDHome ? (
+                              <span class="text-[10px] text-slate-700 italic flex-1">Por definir</span>
+                            ) : (
                               <>
-                                <div class="text-[10px] text-gold/70">
-                                  {m.home_pen !== null ? `(${m.home_pen}–${m.away_pen} pen)` : `(pen)`}
-                                </div>
-                                <div class="text-[9px] text-slate-500">
-                                  {m.winner_penalties === 'home' ? spanishName(m.home_team) : spanishName(m.away_team)}
-                                </div>
+                                {flagUrl(m.home_team, '16x12') && (
+                                  <img src={flagUrl(m.home_team, '16x12')!} width="16" height="12" class="flex-shrink-0 rounded-sm" loading="lazy" />
+                                )}
+                                <span class={`text-[11px] font-semibold truncate flex-1 ${homeWon ? 'text-white' : 'text-slate-300'}`}>
+                                  {spanishName(m.home_team)}
+                                </span>
+                                {finished && hs !== null && (
+                                  <span class={`text-sm font-display font-bold flex-shrink-0 ${homeWon ? (isFinal ? 'text-gold' : 'text-white') : 'text-slate-500'}`}>
+                                    {hs}
+                                  </span>
+                                )}
                               </>
                             )}
-                          </>
-                        ) : (
-                          <span class={`font-display text-xl ${isLate ? 'text-gold/30' : 'text-brand-600'}`}>vs</span>
-                        )}
-                      </div>
-
-                      {/* Visitante */}
-                      <div class="flex-1 text-left min-w-0 space-y-0.5">
-                        {isTBDAway ? (
-                          <span class="text-xs text-slate-600 italic block">Clasifica de fase anterior</span>
-                        ) : (
-                          <div class={`flex items-center gap-1.5 ${
-                            finished ? (awayWon ? 'text-white' : 'text-slate-500') : 'text-slate-200'
-                          }`}>
-                            {flagUrl(m.away_team, '20x15') && <img src={flagUrl(m.away_team, '20x15')!} width="20" height="15" class="flex-shrink-0 rounded-sm" loading="lazy" />}
-                            <span class="text-sm font-semibold truncate">{spanishName(m.away_team)}</span>
                           </div>
-                        )}
-                        {finished && awayWon && <span class="text-[10px] text-gold block text-right">GANADOR</span>}
-                      </div>
 
-                    </div>
+                          {/* Divisor */}
+                          <div class="h-px bg-brand-800/80 mx-2"></div>
 
+                          {/* Visitante */}
+                          <div class={`flex items-center gap-1.5 px-2.5 pb-2 pt-1 ${awayWon ? '' : finished ? 'opacity-45' : ''}`}>
+                            {isTBDAway ? (
+                              <span class="text-[10px] text-slate-700 italic flex-1">Por definir</span>
+                            ) : (
+                              <>
+                                {flagUrl(m.away_team, '16x12') && (
+                                  <img src={flagUrl(m.away_team, '16x12')!} width="16" height="12" class="flex-shrink-0 rounded-sm" loading="lazy" />
+                                )}
+                                <span class={`text-[11px] font-semibold truncate flex-1 ${awayWon ? 'text-white' : 'text-slate-300'}`}>
+                                  {spanishName(m.away_team)}
+                                </span>
+                                {finished && as_ !== null && (
+                                  <span class={`text-sm font-display font-bold flex-shrink-0 ${awayWon ? (isFinal ? 'text-gold' : 'text-white') : 'text-slate-500'}`}>
+                                    {as_}
+                                  </span>
+                                )}
+                              </>
+                            )}
+                          </div>
+
+                          {/* Penales */}
+                          {finished && m.winner_penalties && (
+                            <div class="text-center pb-1.5 -mt-0.5">
+                              <span class="text-[9px] text-gold/60">
+                                {m.home_pen !== null ? `(${m.home_pen}–${m.away_pen} pen)` : 'pen'}
+                              </span>
+                            </div>
+                          )}
+
+                        </div>
+                      );
+                    })}
                   </div>
-                );
-              })}
-            </div>
+
+                </div>
+              );
+            })}
 
           </div>
-        );
-      })}
+        </div>
+      )}
+
+      <p class="text-[10px] text-slate-700 mt-2 text-center">← Desliza para ver todas las rondas →</p>
     </div>
 
   </div>
