@@ -128,12 +128,12 @@ function predStyle(pred: any, m: any): string {
     </div>
 
     <!-- Leyenda de colores -->
-    <div class="flex flex-wrap gap-x-4 gap-y-1.5 text-xs bg-brand-900 border border-brand-800 rounded-xl px-4 py-3">
-      <div class="flex items-center gap-1.5"><span class="text-gold font-bold">3–1</span><span class="text-slate-500">Marcador exacto (3 pts grupos · hasta 6 pts eliminatorias)</span></div>
-      <div class="flex items-center gap-1.5"><span class="text-gol font-bold">2–1</span><span class="text-slate-500">Acertaste quién gana o empata, pero no el marcador (1 pt)</span></div>
-      <div class="flex items-center gap-1.5"><span class="text-slate-300">1–2</span><span class="text-slate-500">Puntos parciales por penales o clasificado (1–2 pts, solo eliminatorias)</span></div>
-      <div class="flex items-center gap-1.5"><span class="text-slate-600">0–0</span><span class="text-slate-500">Resultado incorrecto (0 pts)</span></div>
-      <div class="flex items-center gap-1.5"><span class="text-slate-700">—</span><span class="text-slate-500">No pronosticó este partido (0 pts)</span></div>
+    <div class="flex flex-wrap gap-x-5 gap-y-1.5 text-xs bg-brand-900 border border-brand-800 rounded-xl px-4 py-3">
+      <div class="flex items-center gap-2"><span class="inline-block w-3 h-3 rounded-sm bg-gold flex-shrink-0"></span><span class="text-slate-400">Marcador exacto <span class="text-slate-600">(3 pts grupos · hasta 6 pts eliminatorias)</span></span></div>
+      <div class="flex items-center gap-2"><span class="inline-block w-3 h-3 rounded-sm bg-gol flex-shrink-0"></span><span class="text-slate-400">Ganador/empate correcto, marcador distinto <span class="text-slate-600">(1 pt)</span></span></div>
+      <div class="flex items-center gap-2"><span class="inline-block w-3 h-3 rounded-sm bg-slate-400 flex-shrink-0"></span><span class="text-slate-400">Puntos parciales por penales o clasificado <span class="text-slate-600">(1–2 pts, solo eliminatorias)</span></span></div>
+      <div class="flex items-center gap-2"><span class="inline-block w-3 h-3 rounded-sm bg-slate-700 flex-shrink-0"></span><span class="text-slate-400">Resultado incorrecto <span class="text-slate-600">(0 pts)</span></span></div>
+      <div class="flex items-center gap-2"><span class="inline-block w-3 h-3 rounded-sm border border-slate-700 flex-shrink-0"></span><span class="text-slate-400">Sin pronóstico <span class="text-slate-600">(0 pts)</span></span></div>
     </div>
 
     {jornadaOrder.length === 0 && (
@@ -303,26 +303,11 @@ function predStyle(pred: any, m: any): string {
 
     {jornadaOrder.length > 0 && (
       <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-600 pb-4">
-        <div class="flex items-center gap-1.5">
-          <span class="text-gold font-bold">3–1</span>
-          <span>Marcador exacto</span>
-        </div>
-        <div class="flex items-center gap-1.5">
-          <span class="text-gol font-bold">2–0</span>
-          <span>Quién gana/empata correcto</span>
-        </div>
-        <div class="flex items-center gap-1.5">
-          <span class="text-slate-300">1–2</span>
-          <span>Parcial (solo eliminatorias)</span>
-        </div>
-        <div class="flex items-center gap-1.5">
-          <span class="text-slate-500">1–0</span>
-          <span>Incorrecto</span>
-        </div>
-        <div class="flex items-center gap-1.5">
-          <span class="text-slate-700">—</span>
-          <span>Sin pronóstico</span>
-        </div>
+        <div class="flex items-center gap-2"><span class="inline-block w-3 h-3 rounded-sm bg-gold flex-shrink-0"></span><span>Marcador exacto</span></div>
+        <div class="flex items-center gap-2"><span class="inline-block w-3 h-3 rounded-sm bg-gol flex-shrink-0"></span><span>Ganador/empate correcto</span></div>
+        <div class="flex items-center gap-2"><span class="inline-block w-3 h-3 rounded-sm bg-slate-400 flex-shrink-0"></span><span>Parcial (solo eliminatorias)</span></div>
+        <div class="flex items-center gap-2"><span class="inline-block w-3 h-3 rounded-sm bg-slate-700 flex-shrink-0"></span><span>Incorrecto</span></div>
+        <div class="flex items-center gap-2"><span class="inline-block w-3 h-3 rounded-sm border border-slate-700 flex-shrink-0"></span><span>Sin pronóstico</span></div>
       </div>
     )}
 
