@@ -12,11 +12,37 @@ const { data: { user }, error: sessionErr } = await supabase.auth.setSession({
 });
 if (sessionErr || !user) return Astro.redirect('/login');
 
-const { data: profile } = await supabaseAdmin
-  .from('profiles')
-  .select('username, puntos_totales, es_referi, pago_70, pago_50')
-  .eq('id', user.id)
-  .single();
+const [{ data: profile }, { data: predHistory }] = await Promise.all([
+  supabaseAdmin
+    .from('profiles')
+    .select('username, puntos_totales, es_referi, pago_70, pago_50')
+    .eq('id', user.id)
+    .single(),
+  supabaseAdmin
+    .from('predictions')
+    .select('points_earned, match:matches!inner(match_date, jornada, stage, round, group_name, home_team, away_team, is_finished)')
+    .eq('user_id', user.id)
+    .eq('matches.is_finished', true)
+    .order('matches.match_date', { ascending: true }),
+]);
+
+// Agrupar por día Bolivia
+const jornadaMap = new Map<string, { pts: number; partidos: number; label: string }>();
+for (const p of (predHistory ?? []) as any[]) {
+  const m = p.match;
+  if (!m?.is_finished) continue;
+  const dayKey = new Date(m.match_date).toLocaleDateString('es-BO', {
+    weekday: 'long', day: 'numeric', month: 'long', timeZone: 'America/La_Paz',
+  });
+  const label = m.stage === 'group'
+    ? (m.group_name ? `Grupo ${m.group_name}` : m.jornada ?? dayKey)
+    : (m.round ?? dayKey);
+  if (!jornadaMap.has(dayKey)) jornadaMap.set(dayKey, { pts: 0, partidos: 0, label });
+  const entry = jornadaMap.get(dayKey)!;
+  entry.pts += p.points_earned ?? 0;
+  entry.partidos++;
+}
+const jornadaHistory = [...jornadaMap.entries()].map(([day, v]) => ({ day, ...v }));
 ---
 
 <Layout title="Mi Perfil" navProfile={profile} isAuthed={true} userId={user.id}>
@@ -89,6 +115,29 @@ const { data: profile } = await supabaseAdmin
         </button>
       </form>
     </div>
+
+    <!-- Historial de puntos por jornada -->
+    {jornadaHistory.length > 0 && (
+      <div class="bg-brand-900 border border-brand-700/60 rounded-2xl p-5 space-y-3">
+        <div class="flex items-center justify-between">
+          <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wide">Historial de puntos</h2>
+          <span class="text-gold font-bold text-sm">{profile?.puntos_totales ?? 0} pts total</span>
+        </div>
+        <div class="space-y-1.5">
+          {jornadaHistory.map(({ day, pts, partidos, label }) => (
+            <div class="flex items-center justify-between py-2 border-b border-brand-800/60 last:border-0">
+              <div class="min-w-0">
+                <p class="text-sm text-slate-300 capitalize leading-tight">{day}</p>
+                <p class="text-xs text-slate-600 mt-0.5">{partidos} partido{partidos !== 1 ? 's' : ''}</p>
+              </div>
+              <span class={`font-display text-xl font-bold flex-shrink-0 ml-3 ${pts >= 6 ? 'text-gold' : pts >= 3 ? 'text-gol' : pts >= 1 ? 'text-slate-300' : 'text-slate-600'}`}>
+                {pts}<span class="text-xs font-sans text-slate-500 ml-0.5">pts</span>
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    )}
 
     <!-- Cambiar contraseña -->
     <div class="bg-brand-900 border border-brand-700/60 rounded-2xl p-5 space-y-4">
