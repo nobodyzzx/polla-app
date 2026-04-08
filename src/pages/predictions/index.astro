@@ -52,11 +52,12 @@ type MatchRow = {
   jornada: string | null;
 };
 
-// Agrupar por día Bolivia (UTC-4) — cada día es su propia unidad de pronóstico.
-// El cierre es 2h antes del primer partido de ESE DÍA (no de la jornada completa).
+// Agrupar por jornada Bolivia — el día empieza a las 03:00 AM BOT para que
+// partidos de medianoche (00:00-02:59) queden con la noche anterior.
 const grouped = new Map<string, MatchRow[]>();
 for (const m of (matches ?? []) as MatchRow[]) {
-  const key = new Date(m.match_date).toLocaleDateString('es-BO', {
+  const dayStart = boliviaDayStart(new Date(m.match_date).getTime());
+  const key = dayStart.toLocaleDateString('es-BO', {
     weekday: 'long', day: 'numeric', month: 'long',
     timeZone: 'America/La_Paz',
   });
@@ -67,7 +68,8 @@ for (const m of (matches ?? []) as MatchRow[]) {
 const now = nowMs;
 
 function toBoliviaDay(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('es-BO', {
+  const dayStart = boliviaDayStart(new Date(dateStr).getTime());
+  return dayStart.toLocaleDateString('es-BO', {
     weekday: 'long', day: 'numeric', month: 'long', timeZone: 'America/La_Paz',
   });
 }

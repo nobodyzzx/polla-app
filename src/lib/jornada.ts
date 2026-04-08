@@ -8,13 +8,19 @@
 export const JORNADA_CLOSE_MS = 2 * 3600 * 1000; // 2 horas
 
 /**
- * Retorna el timestamp UTC del inicio del día Bolivia (UTC-4) para una fecha dada.
- * Ej: si el partido es el 15/06 a las 15:00 BOT → retorna 15/06 00:00 BOT (= 04:00 UTC).
+ * Retorna el timestamp UTC del inicio de la "jornada del día" Bolivia.
+ * El día se considera que empieza a las 03:00 AM BOT (no en medianoche) para
+ * que partidos a las 00:00-02:59 queden agrupados con la noche anterior.
+ * Ej: Australia-Turquía 00:00 sáb → misma jornada que USA-Paraguay 21:00 vie.
  */
+const BOLIVIA_OFFSET_MS = 4 * 3600 * 1000;  // UTC-4
+const DAY_BOUNDARY_MS   = 3 * 3600 * 1000;  // el "día" empieza a las 03:00 BOT
+
 export function boliviaDayStart(dateMs: number): Date {
-  const shifted = new Date(dateMs - 4 * 3600 * 1000);
+  const shifted = new Date(dateMs - BOLIVIA_OFFSET_MS - DAY_BOUNDARY_MS);
   return new Date(
-    Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate()) + 4 * 3600 * 1000
+    Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate())
+    + BOLIVIA_OFFSET_MS + DAY_BOUNDARY_MS
   );
 }
 
