@@ -39,6 +39,13 @@ function formatDate(dateStr: string): string {
     hour12: false
   });
 }
+function formatTime(dateStr: string): string {
+  return new Date(dateStr).toLocaleString('es-BO', {
+    hour: '2-digit', minute: '2-digit',
+    timeZone: 'America/La_Paz',
+    hour12: false
+  });
+}
 
 
 type MatchRow = {
@@ -424,7 +431,7 @@ let globalFormIdx = 0;
                       <div class="flex-shrink-0 px-2 text-center min-w-[60px]">
                         {existing
                           ? <span class="text-gol font-display text-2xl">{existing.user_home}–{existing.user_away}</span>
-                          : <span class="text-slate-700 text-sm">–</span>
+                          : <span class="text-white font-display text-2xl font-bold">{formatTime(m.match_date)}</span>
                         }
                       </div>
                       <div class="flex-1">
