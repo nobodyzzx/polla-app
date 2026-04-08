@@ -304,54 +304,75 @@ let globalFormIdx = 0;
                     </div>
 
                     {/* Equipos + inputs */}
-                    <div class="flex items-center gap-2">
-
-                      {/* Local */}
-                      <div class="flex-1 flex flex-col items-end gap-1 min-w-0">
-                        <span class="text-white font-semibold text-base text-right leading-tight">
-                          {spanishName(m.home_team)}
-                          {homeISO && <span class="flag-emoji ml-1" data-iso={homeISO}></span>}
+                    {existing ? (
+                      /* Ya pronosticado: layout horizontal clásico */
+                      <div class="flex items-center gap-2">
+                        <div class="flex-1 text-right">
+                          <span class="text-white font-semibold text-base leading-tight">
+                            {spanishName(m.home_team)}
+                            {homeISO && <span class="flag-emoji ml-1" data-iso={homeISO}></span>}
+                          </span>
+                        </div>
+                        <span class="text-gol font-display text-3xl flex-shrink-0 px-2">
+                          {existing.user_home}–{existing.user_away}
                         </span>
-                        {existing ? (
-                          <span class="text-gol font-display text-3xl">{existing.user_home}</span>
-                        ) : (
-                          <>
-                            <input type="hidden" name={`matchId_${idx}`} value={m.id} />
+                        <div class="flex-1">
+                          <span class="text-white font-semibold text-base leading-tight">
+                            {awayISO && <span class="flag-emoji mr-1" data-iso={awayISO}></span>}
+                            {spanishName(m.away_team)}
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
+                      /* Sin pronóstico: nombres arriba, steppers abajo */
+                      <div class="space-y-3">
+                        <input type="hidden" name={`matchId_${idx}`} value={m.id} />
+                        <div class="flex items-center justify-between gap-2">
+                          <span class="flex-1 text-right text-white font-semibold text-base leading-tight">
+                            {spanishName(m.home_team)}
+                            {homeISO && <span class="flag-emoji ml-1" data-iso={homeISO}></span>}
+                          </span>
+                          <span class="text-slate-600 text-sm flex-shrink-0">vs</span>
+                          <span class="flex-1 text-left text-white font-semibold text-base leading-tight">
+                            {awayISO && <span class="flag-emoji mr-1" data-iso={awayISO}></span>}
+                            {spanishName(m.away_team)}
+                          </span>
+                        </div>
+                        <div class="flex items-center justify-center gap-2">
+                          {/* Stepper local */}
+                          <div class="flex items-center gap-1">
+                            <button type="button"
+                              class="stepper-btn w-10 h-10 rounded-xl bg-brand-700 active:bg-brand-600 text-white text-xl font-bold flex items-center justify-center transition touch-manipulation select-none"
+                              data-action="dec" data-target={`home_${idx}`}>−</button>
                             <input
-                              type="number"
-                              inputmode="numeric"
-                              pattern="[0-9]*"
+                              type="number" inputmode="numeric" pattern="[0-9]*"
                               name={`home_${idx}`}
-                              min="0" max="20" required placeholder="0"
-                              class="w-16 bg-brand-800 border-2 border-brand-700 rounded-xl py-3 text-white text-2xl font-display text-center focus:outline-none focus:border-gold transition"
+                              min="0" max="20" required value="0"
+                              class="w-14 bg-brand-800 border-2 border-brand-700 rounded-xl py-2 text-white text-2xl font-display text-center focus:outline-none focus:border-gold transition"
                             />
-                          </>
-                        )}
+                            <button type="button"
+                              class="stepper-btn w-10 h-10 rounded-xl bg-brand-700 active:bg-brand-600 text-white text-xl font-bold flex items-center justify-center transition touch-manipulation select-none"
+                              data-action="inc" data-target={`home_${idx}`}>+</button>
+                          </div>
+                          <span class="text-slate-500 font-bold text-xl px-1">–</span>
+                          {/* Stepper visitante */}
+                          <div class="flex items-center gap-1">
+                            <button type="button"
+                              class="stepper-btn w-10 h-10 rounded-xl bg-brand-700 active:bg-brand-600 text-white text-xl font-bold flex items-center justify-center transition touch-manipulation select-none"
+                              data-action="dec" data-target={`away_${idx}`}>−</button>
+                            <input
+                              type="number" inputmode="numeric" pattern="[0-9]*"
+                              name={`away_${idx}`}
+                              min="0" max="20" required value="0"
+                              class="w-14 bg-brand-800 border-2 border-brand-700 rounded-xl py-2 text-white text-2xl font-display text-center focus:outline-none focus:border-gold transition"
+                            />
+                            <button type="button"
+                              class="stepper-btn w-10 h-10 rounded-xl bg-brand-700 active:bg-brand-600 text-white text-xl font-bold flex items-center justify-center transition touch-manipulation select-none"
+                              data-action="inc" data-target={`away_${idx}`}>+</button>
+                          </div>
+                        </div>
                       </div>
-
-                      {/* Separador */}
-                      <div class="text-brand-600 font-bold text-xl flex-shrink-0 pb-0.5">–</div>
-
-                      {/* Visitante */}
-                      <div class="flex-1 flex flex-col items-start gap-1 min-w-0">
-                        <span class="text-white font-semibold text-base leading-tight">
-                          {awayISO && <span class="flag-emoji mr-1" data-iso={awayISO}></span>}
-                          {spanishName(m.away_team)}
-                        </span>
-                        {existing ? (
-                          <span class="text-gol font-display text-3xl">{existing.user_away}</span>
-                        ) : (
-                          <input
-                            type="number"
-                            inputmode="numeric"
-                            pattern="[0-9]*"
-                            name={`away_${idx}`}
-                            min="0" max="20" required placeholder="0"
-                            class="w-16 bg-brand-800 border-2 border-brand-700 rounded-xl py-3 text-white text-2xl font-display text-center focus:outline-none focus:border-gold transition"
-                          />
-                        )}
-                      </div>
-                    </div>
+                    )}
 
                     {/* Penales (knockout sin pronóstico) */}
                     {isKnockout && !existing && (
@@ -602,8 +623,24 @@ let globalFormIdx = 0;
     });
   }
 
+  function initSteppers() {
+    document.querySelectorAll<HTMLButtonElement>('.stepper-btn').forEach(btn => {
+      if (btn._stepInit) return;
+      btn._stepInit = true;
+      btn.addEventListener('click', () => {
+        const input = document.querySelector<HTMLInputElement>(`input[name="${btn.dataset.target}"]`);
+        if (!input) return;
+        const val = parseInt(input.value) || 0;
+        const next = btn.dataset.action === 'inc' ? Math.min(val + 1, 20) : Math.max(val - 1, 0);
+        input.value = String(next);
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+    });
+  }
+
   function init() {
     initFlags();
+    initSteppers();
     initPenaltySections();
     initShareButtons();
     initSubmitButtons();
