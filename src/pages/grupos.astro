@@ -341,20 +341,23 @@ function isPending(name: string | null): boolean {
                     {useFifaStyle ? (
                       /* ── Formato FIFA: bracket con códigos de posición ── */
                       <div class="px-4 py-4 text-center space-y-1.5">
-                        <div class="flex items-center justify-center gap-3">
-                          <span class={`font-display text-2xl font-bold tracking-wide ${isFinal ? 'text-gold' : 'text-slate-300'}`}>
-                            {shortCode(m.home_team)}
-                          </span>
-                          <svg class={`w-6 h-6 flex-shrink-0 ${isFinal ? 'text-gold/50' : 'text-slate-600'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 3L3 7v5c0 5.25 3.75 9.75 9 11 5.25-1.25 9-5.75 9-11V7l-9-4z" />
-                          </svg>
-                          <svg class={`w-6 h-6 flex-shrink-0 ${isFinal ? 'text-gold/50' : 'text-slate-600'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 3L3 7v5c0 5.25 3.75 9.75 9 11 5.25-1.25 9-5.75 9-11V7l-9-4z" />
-                          </svg>
-                          <span class={`font-display text-2xl font-bold tracking-wide ${isFinal ? 'text-gold' : 'text-slate-300'}`}>
-                            {shortCode(m.away_team)}
-                          </span>
-                        </div>
+                        {(() => {
+                          const hCode = shortCode(m.home_team);
+                          const aCode = shortCode(m.away_team);
+                          const hasCode = hCode !== '?' || aCode !== '?';
+                          return (
+                            <div class="flex items-center justify-center gap-3">
+                              {hasCode && <span class={`font-display text-2xl font-bold tracking-wide ${isFinal ? 'text-gold' : 'text-slate-300'}`}>{hCode}</span>}
+                              <svg class={`w-6 h-6 flex-shrink-0 ${isFinal ? 'text-gold/50' : 'text-slate-600'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 3L3 7v5c0 5.25 3.75 9.75 9 11 5.25-1.25 9-5.75 9-11V7l-9-4z" />
+                              </svg>
+                              <svg class={`w-6 h-6 flex-shrink-0 ${isFinal ? 'text-gold/50' : 'text-slate-600'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 3L3 7v5c0 5.25 3.75 9.75 9 11 5.25-1.25 9-5.75 9-11V7l-9-4z" />
+                              </svg>
+                              {hasCode && <span class={`font-display text-2xl font-bold tracking-wide ${isFinal ? 'text-gold' : 'text-slate-300'}`}>{aCode}</span>}
+                            </div>
+                          );
+                        })()}
                         <p class="text-xs text-slate-600">
                           {new Date(m.match_date).toLocaleDateString('es-BO', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'America/La_Paz' })}
                         </p>
