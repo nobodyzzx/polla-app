@@ -95,39 +95,34 @@ function fmtTime(d: string) {
   });
 }
 
-/** Convierte nombre de placeholder a código corto para mostrar en bracket.
- *  Formatos soportados:
- *  "1A" / "2B" / "3BCDEF"   → ya es código, devuelve tal cual
- *  "1st Group A"             → "1A"
- *  "2nd Group BC"            → "2BC"
- *  "Winner Match 3"          → "WM3"
- *  "Winner Group A"          → "WA"
- *  "TBD"                     → "?"
+/** Convierte placeholder a código corto para mostrar en bracket.
+ *  "1A" / "2B" / "3BCDEF"  → tal cual
+ *  "W73" / "W97"           → tal cual (ganador de partido FIFA)
+ *  "L101"                  → tal cual (perdedor, partido 3er puesto)
+ *  "TBD"                   → "?"
  */
 function shortCode(name: string | null): string {
   if (!name) return '?';
-  // Ya es código corto: "1A", "2B", "3BCDEF", "WA", "WM3"
-  if (/^\d[A-Z]+$/i.test(name) || /^W[A-Z0-9]+$/i.test(name)) return name.toUpperCase();
-  // "1st Group A", "2nd Groups BCDEF"
+  // Ya es código corto de posición: "1A", "2B", "3BCDEF"
+  if (/^\d[A-Z]+$/i.test(name)) return name.toUpperCase();
+  // Código de ganador/perdedor: "W73", "W97", "L101"
+  if (/^[WL]\d+$/i.test(name)) return name.toUpperCase();
+  // Formatos largos por si acaso
   const pos = name.match(/^(\d+)(?:st|nd|rd|th)\s+Groups?\s+([A-Z]+)/i);
   if (pos) return `${pos[1]}${pos[2].toUpperCase()}`;
-  // "Winner Match 3" / "Winner Playoff 1"
   const wm = name.match(/^Winner\s+(?:Match|Playoff)\s*(\d+)/i);
-  if (wm) return `WM${wm[1]}`;
-  // "Winner Group A"
+  if (wm) return `W${wm[1]}`;
   const wg = name.match(/^Winner\s+Group\s+([A-Z]+)/i);
   if (wg) return `W${wg[1].toUpperCase()}`;
   if (/^TBD/i.test(name)) return '?';
   return name;
 }
 
-/** True si el equipo aún no está determinado (es un placeholder de bracket) */
+/** True si el equipo aún no está determinado (placeholder de bracket) */
 function isPending(name: string | null): boolean {
   if (!name) return true;
-  // Código corto de posición: "1A", "2B", "3BCDEF"
-  if (/^\d[A-Z]+$/i.test(name)) return true;
-  // Código de ganador: "WA", "WM3"
-  if (/^W[A-Z0-9]+$/i.test(name)) return true;
+  if (/^\d[A-Z]+$/i.test(name)) return true;       // "1A", "2B", "3BCDEF"
+  if (/^[WL]\d+$/i.test(name)) return true;         // "W73", "L101"
   return /^(TBD|Winner|1st|2nd|3rd|4th|\d+(?:st|nd|rd|th))/i.test(name);
 }
 ---
