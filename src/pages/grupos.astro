@@ -94,6 +94,29 @@ function fmtTime(d: string) {
     timeZone: 'America/La_Paz',
   });
 }
+
+/** Convierte "1st Group A" → "1A", "2nd Group BC" → "2BC", "Winner Match 3" → "WM3", "TBD" → "?" */
+function shortCode(name: string | null): string {
+  if (!name) return '?';
+  // "1st Group A", "2nd Group B", "3rd Groups ABCD" etc.
+  const pos = name.match(/^(\d+)(?:st|nd|rd|th)\s+Group[s]?\s+([A-Z]+)/i);
+  if (pos) return `${pos[1]}${pos[2]}`;
+  // "Winner Match 3" / "Winner Playoff 1"
+  const wm = name.match(/^Winner\s+(?:Match|Playoff)\s*(\d+)/i);
+  if (wm) return `W${wm[1]}`;
+  // "Winner Group A"
+  const wg = name.match(/^Winner\s+Group\s+([A-Z]+)/i);
+  if (wg) return `W${wg[1]}`;
+  // TBD / Por definir
+  if (/^TBD/i.test(name)) return '?';
+  return name;
+}
+
+/** True si el equipo aún no está determinado (placeholder) */
+function isPending(name: string | null): boolean {
+  if (!name) return true;
+  return /^(TBD|Winner|1st|2nd|3rd|4th|\d+(?:st|nd|rd|th))/i.test(name);
+}
 ---
 
 <Layout title="Grupos" navProfile={navProfile} isAuthed={true} userId={user.id}>
@@ -291,8 +314,9 @@ function fmtTime(d: string) {
                 const as_ = m.away_score as number | null;
                 const homeWon = finished && hs !== null && as_ !== null && (hs > as_ || (hs === as_ && m.winner_penalties === 'home'));
                 const awayWon = finished && hs !== null && as_ !== null && (as_ > hs || (hs === as_ && m.winner_penalties === 'away'));
-                const isTBDHome = m.home_team?.startsWith('TBD') || !m.home_team;
-                const isTBDAway = m.away_team?.startsWith('TBD') || !m.away_team;
+                const homePending = isPending(m.home_team);
+                const awayPending = isPending(m.away_team);
+                const useFifaStyle = !finished && (homePending || awayPending);
 
                 return (
                   <div class={`border rounded-2xl overflow-hidden ${
@@ -301,55 +325,78 @@ function fmtTime(d: string) {
                               'border-brand-700/60 bg-brand-900'
                   }`}>
 
-                    {!finished && (
-                      <div class="px-4 pt-2 text-center">
-                        <span class="text-[10px] text-slate-600">{fmtDateShort(m.match_date)}</span>
+                    {useFifaStyle ? (
+                      /* ── Formato FIFA: equipos aún no determinados ── */
+                      <div class="px-4 py-4 text-center space-y-1.5">
+                        <div class="flex items-center justify-center gap-3">
+                          {/* Local */}
+                          <span class={`font-display text-2xl font-bold tracking-wide ${isFinal ? 'text-gold' : 'text-slate-200'}`}>
+                            {shortCode(m.home_team)}
+                          </span>
+                          {/* Escudo local */}
+                          <svg class="w-6 h-6 text-slate-600 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 3L3 7v5c0 5.25 3.75 9.75 9 11 5.25-1.25 9-5.75 9-11V7l-9-4z" />
+                          </svg>
+                          {/* Hora */}
+                          <span class={`font-display text-2xl font-bold ${isFinal ? 'text-gold' : 'text-white'}`}>
+                            {fmtTime(m.match_date)}
+                          </span>
+                          {/* Escudo visitante */}
+                          <svg class="w-6 h-6 text-slate-600 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 3L3 7v5c0 5.25 3.75 9.75 9 11 5.25-1.25 9-5.75 9-11V7l-9-4z" />
+                          </svg>
+                          {/* Visitante */}
+                          <span class={`font-display text-2xl font-bold tracking-wide ${isFinal ? 'text-gold' : 'text-slate-200'}`}>
+                            {shortCode(m.away_team)}
+                          </span>
+                        </div>
+                        <p class="text-xs text-slate-600">
+                          {round}
+                          <span class="mx-1.5">·</span>
+                          {new Date(m.match_date).toLocaleDateString('es-BO', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'America/La_Paz' })}
+                        </p>
                       </div>
-                    )}
-
-                    <div class="px-4 py-3 flex items-center gap-3">
-
-                      <div class="flex-1 text-right min-w-0 space-y-0.5">
-                        {isTBDHome ? (
-                          <span class="text-xs text-slate-600 italic block">Por definir</span>
-                        ) : (
-                          <div class={`flex items-center justify-end gap-1.5 ${finished ? (homeWon ? 'text-white' : 'text-slate-500') : 'text-slate-200'}`}>
-                            <span class="text-sm font-semibold truncate">{spanishName(m.home_team)}</span>
-                            {flagUrl(m.home_team, '20x15') && <img src={flagUrl(m.home_team, '20x15')!} width="20" height="15" class="flex-shrink-0 rounded-sm" loading="lazy" />}
+                    ) : (
+                      /* ── Formato normal: equipos conocidos o partido terminado ── */
+                      <>
+                        {!finished && (
+                          <div class="px-4 pt-2 text-center">
+                            <span class="text-[10px] text-slate-600">{fmtDateShort(m.match_date)}</span>
                           </div>
                         )}
-                        {finished && homeWon && <span class="text-[10px] text-gold block">GANADOR</span>}
-                      </div>
-
-                      <div class="flex-shrink-0 text-center min-w-[72px] space-y-0.5">
-                        {finished ? (
-                          <>
-                            <div class={`font-display text-2xl leading-none ${isFinal ? 'text-gold' : 'text-white'}`}>{hs} – {as_}</div>
-                            {m.winner_penalties && (
+                        <div class="px-4 py-3 flex items-center gap-3">
+                          <div class="flex-1 text-right min-w-0 space-y-0.5">
+                            <div class={`flex items-center justify-end gap-1.5 ${finished ? (homeWon ? 'text-white' : 'text-slate-500') : 'text-slate-200'}`}>
+                              <span class="text-sm font-semibold truncate">{spanishName(m.home_team)}</span>
+                              {flagUrl(m.home_team, '20x15') && <img src={flagUrl(m.home_team, '20x15')!} width="20" height="15" class="flex-shrink-0 rounded-sm" loading="lazy" />}
+                            </div>
+                            {finished && homeWon && <span class="text-[10px] text-gold block">GANADOR</span>}
+                          </div>
+                          <div class="flex-shrink-0 text-center min-w-[72px] space-y-0.5">
+                            {finished ? (
                               <>
-                                <div class="text-[10px] text-gold/70">{m.home_pen !== null ? `(${m.home_pen}–${m.away_pen} pen)` : '(pen)'}</div>
-                                <div class="text-[9px] text-slate-500">{m.winner_penalties === 'home' ? spanishName(m.home_team) : spanishName(m.away_team)}</div>
+                                <div class={`font-display text-2xl leading-none ${isFinal ? 'text-gold' : 'text-white'}`}>{hs} – {as_}</div>
+                                {m.winner_penalties && (
+                                  <>
+                                    <div class="text-[10px] text-gold/70">{m.home_pen !== null ? `(${m.home_pen}–${m.away_pen} pen)` : '(pen)'}</div>
+                                    <div class="text-[9px] text-slate-500">{m.winner_penalties === 'home' ? spanishName(m.home_team) : spanishName(m.away_team)}</div>
+                                  </>
+                                )}
                               </>
+                            ) : (
+                              <span class={`font-display text-xl ${isLate ? 'text-gold/30' : 'text-brand-600'}`}>vs</span>
                             )}
-                          </>
-                        ) : (
-                          <span class={`font-display text-xl ${isLate ? 'text-gold/30' : 'text-brand-600'}`}>vs</span>
-                        )}
-                      </div>
-
-                      <div class="flex-1 text-left min-w-0 space-y-0.5">
-                        {isTBDAway ? (
-                          <span class="text-xs text-slate-600 italic block">Por definir</span>
-                        ) : (
-                          <div class={`flex items-center gap-1.5 ${finished ? (awayWon ? 'text-white' : 'text-slate-500') : 'text-slate-200'}`}>
-                            {flagUrl(m.away_team, '20x15') && <img src={flagUrl(m.away_team, '20x15')!} width="20" height="15" class="flex-shrink-0 rounded-sm" loading="lazy" />}
-                            <span class="text-sm font-semibold truncate">{spanishName(m.away_team)}</span>
                           </div>
-                        )}
-                        {finished && awayWon && <span class="text-[10px] text-gold block">GANADOR</span>}
-                      </div>
-
-                    </div>
+                          <div class="flex-1 text-left min-w-0 space-y-0.5">
+                            <div class={`flex items-center gap-1.5 ${finished ? (awayWon ? 'text-white' : 'text-slate-500') : 'text-slate-200'}`}>
+                              {flagUrl(m.away_team, '20x15') && <img src={flagUrl(m.away_team, '20x15')!} width="20" height="15" class="flex-shrink-0 rounded-sm" loading="lazy" />}
+                              <span class="text-sm font-semibold truncate">{spanishName(m.away_team)}</span>
+                            </div>
+                            {finished && awayWon && <span class="text-[10px] text-gold block">GANADOR</span>}
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </div>
                 );
               })}
