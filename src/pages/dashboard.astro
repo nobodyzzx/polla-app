@@ -174,10 +174,12 @@ const navProfile = myProfile ?? null;
 
 // Stats para tarjetas
 const leaderPoints = rows[0]?.puntos_totales ?? 0;
-const participantes = rows.filter(r => (r.monto_pagado ?? 0) >= 70);
-const pozoActual  = participantes.reduce((s, r) => s + Math.min((r.monto_pagado ?? 0) - 20, 100), 0);
-const pozoTotal   = participantes.length * 100;
-const montoReferi = participantes.length * 20;
+const participantes  = rows.filter(r => (r.monto_pagado ?? 0) >= 70);
+const countCompletos = rows.filter(r => (r.monto_pagado ?? 0) >= 120).length;
+const countParciales = participantes.length - countCompletos;
+const pozoActual     = participantes.reduce((s, r) => s + Math.min((r.monto_pagado ?? 0) - 20, 100), 0);
+const pozoTotal      = participantes.length * 100;
+const montoReferi    = participantes.length * 20;
 const nextMatch = (proximosPartidos ?? [])[0] ?? null;
 
 // Próximo partido — countdown
@@ -302,7 +304,7 @@ function accentLine(i: number, isMe: boolean) {
         <div class="absolute -top-4 -right-4 w-16 h-16 bg-white/10 rounded-full blur-xl"></div>
         <span class="relative text-xs text-white/70 uppercase tracking-wide">Pago completo</span>
         <span class="relative text-2xl">✅</span>
-        <span class="relative font-display text-3xl text-white leading-none">{countPago50}<span class="text-white/40 text-base font-sans"> / {rows.length}</span></span>
+        <span class="relative font-display text-3xl text-white leading-none">{countCompletos}<span class="text-white/40 text-base font-sans"> / {rows.length}</span></span>
       </div>
 
       <!-- Próximo partido -->
@@ -339,7 +341,7 @@ function accentLine(i: number, isMe: boolean) {
 
     <!-- POZO PARCIAL -->
     {(() => {
-      const soloPrimero = countPago70 - countPago50;
+      const soloPrimero = countParciales;
       const maxPozo = rows.length * 100;
       const pct = maxPozo > 0 ? Math.round(pozoActual / maxPozo * 100) : 0;
       return (
@@ -350,7 +352,7 @@ function accentLine(i: number, isMe: boolean) {
           <!-- Header -->
           <div class="relative flex items-center justify-between">
             <span class="text-xs text-white/70 uppercase tracking-wide">💰 Pozo actual</span>
-            <span class="text-xs text-white/50">{countPago50} completo · {soloPrimero} parcial · {rows.length - countPago70} sin pago</span>
+            <span class="text-xs text-white/50">{countCompletos} completo · {soloPrimero} parcial · {rows.length - participantes.length} sin pago</span>
           </div>
           <!-- Monto -->
           <div class="relative flex items-end gap-3">
