@@ -178,8 +178,17 @@ const navProfile = myProfile ?? null;
 const leaderPoints = rows[0]?.puntos_totales ?? 0;
 const countPago70 = rows.filter(r => r.pago_70).length;
 const countPago50 = rows.filter(r => r.pago_70 && r.pago_50).length;
-const pozoTotal = countPago50 * 100;
-const pozoActual = countPago50 * 100 + (countPago70 - countPago50) * 50;
+
+// Monto efectivo: usa monto_pagado si está registrado, si no infiere del flag
+function efectivo(r: StandingRow): number {
+  const m = r.monto_pagado ?? 0;
+  if (m > 0) return m;
+  if (r.pago_50) return 120;
+  if (r.pago_70) return 70;
+  return 0;
+}
+const pozoTotal = countPago70 * 100;
+const pozoActual = rows.filter(r => r.pago_70).reduce((s, r) => s + Math.min(efectivo(r) - 20, 100), 0);
 const montoReferi = countPago70 * 20;
 const nextMatch = (proximosPartidos ?? [])[0] ?? null;
 
