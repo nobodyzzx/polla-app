@@ -429,7 +429,7 @@ function accentLine(i: number, isMe: boolean) {
                 <div class="flex items-center gap-2 mt-0.5 flex-wrap">
                   {(() => {
                     const m = p.monto_pagado ?? 0;
-                    if (m >= 120 || p.pago_50) return <span class="text-gol text-sm font-semibold">✅ PAGADO 120 Bs</span>;
+                    if (m >= 120 || p.pago_50) return <span class="text-gol text-sm">✅ PAGADO 120 Bs</span>;
                     if (m >= 70)  return <span class="text-amber-400 text-sm">⏳ {m} Bs · faltan {120 - m} Bs</span>;
                     if (p.pago_70) return <span class="text-amber-400 text-sm">⏳ 70 Bs · faltan 50 Bs</span>;
                     return <span class="text-roja text-sm">❌ sin pago</span>;
@@ -510,8 +510,8 @@ function accentLine(i: number, isMe: boolean) {
                   <td class="px-4 py-3 text-center">
                     {(() => {
                       const m = p.monto_pagado ?? 0;
-                      if (m >= 120 || p.pago_50) return <span class="text-gol text-sm font-semibold">PAGADO 120 Bs</span>;
-                      if (m >= 70)  return <span class="text-amber-400 text-sm font-mono">{m} Bs</span>;
+                      if (m >= 120 || p.pago_50) return <span class="text-gol text-sm">PAGADO 120 Bs</span>;
+                      if (m >= 70)  return <span class="text-amber-400 text-sm">{m} Bs</span>;
                       if (p.pago_70) return <span class="text-amber-400 text-sm">70 Bs</span>;
                       return <span class="text-slate-600 text-sm">—</span>;
                     })()}
@@ -520,9 +520,9 @@ function accentLine(i: number, isMe: boolean) {
                     {(() => {
                       const m = p.monto_pagado ?? 0;
                       if (m >= 120 || p.pago_50) return <span class="text-gol text-sm">✓</span>;
-                      if (m >= 70)  return <span class="text-slate-400 text-sm font-mono">{120 - m} Bs</span>;
-                      if (p.pago_70) return <span class="text-slate-400 text-sm font-mono">50 Bs</span>;
-                      return <span class="text-slate-600 text-sm font-mono">120 Bs</span>;
+                      if (m >= 70)  return <span class="text-slate-400 text-sm">{120 - m} Bs</span>;
+                      if (p.pago_70) return <span class="text-slate-400 text-sm">50 Bs</span>;
+                      return <span class="text-slate-600 text-sm">120 Bs</span>;
                     })()}
                   </td>
                 </tr>
