@@ -422,12 +422,12 @@ function accentLine(i: number, isMe: boolean) {
                     <span class={p.pago_70 ? 'text-gol' : 'text-roja'}>{p.pago_70 ? '✅' : '❌'} 70 Bs</span>
                     <span class="text-brand-700">·</span>
                     <span class={p.pago_50 ? 'text-gol' : 'text-slate-600'}>{p.pago_50 ? '✅' : '❌'} 50 Bs</span>
-                    {p.monto_pagado > 0 && p.monto_pagado !== (p.pago_70 ? (p.pago_50 ? 120 : 70) : 0) && (
+                    {(() => { const implied = p.pago_70 ? (p.pago_50 ? 120 : 70) : 0; const diff = (p.monto_pagado ?? 0) - implied; return diff > 0 ? (
                       <>
                         <span class="text-brand-700">·</span>
-                        <span class="text-amber-400 font-mono">dep. {p.monto_pagado} Bs</span>
+                        <span class="text-amber-400 font-mono">+{diff} Bs a favor</span>
                       </>
-                    )}
+                    ) : null; })()}
                   </div>
                   {gap > 0 && (
                     <span class="text-xs text-slate-600">−{gap} pts</span>
@@ -505,9 +505,7 @@ function accentLine(i: number, isMe: boolean) {
                   <td class="px-4 py-3 text-center">
                     <div class="flex flex-col items-center gap-0.5">
                       {p.pago_70 ? <span class="text-gol text-base">✅</span> : <span class="text-roja text-base">❌</span>}
-                      {p.monto_pagado > 0 && p.monto_pagado !== (p.pago_70 ? (p.pago_50 ? 120 : 70) : 0) && (
-                        <span class="text-amber-400 text-[9px] font-mono">{p.monto_pagado} Bs</span>
-                      )}
+                      {(() => { const implied = p.pago_70 ? (p.pago_50 ? 120 : 70) : 0; const diff = (p.monto_pagado ?? 0) - implied; return diff > 0 ? <span class="text-amber-400 text-[9px] font-mono">+{diff} Bs</span> : null; })()}
                     </div>
                   </td>
                   <td class="px-4 py-3 text-center text-base">
