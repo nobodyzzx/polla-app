@@ -10,14 +10,13 @@ if (accessToken) return Astro.redirect('/dashboard');
 // Stats dinámicas
 const { data: pagosData, count: numJugadores } = await supabaseAdmin
   .from('profiles')
-  .select('pago_70, pago_50', { count: 'exact' })
+  .select('monto_pagado', { count: 'exact' })
   .eq('participa', true)
   .eq('expulsado', false);
 
 const totalJugadores = numJugadores ?? 0;
-const countPago70 = (pagosData ?? []).filter(p => p.pago_70).length;
-const countPago50 = (pagosData ?? []).filter(p => p.pago_70 && p.pago_50).length;
-const pozo = countPago50 * 100 + (countPago70 - countPago50) * 50;
+const participantesIdx = (pagosData ?? []).filter(p => (p.monto_pagado ?? 0) >= 70);
+const pozo = participantesIdx.reduce((s: number, p: any) => s + Math.min((p.monto_pagado ?? 0) - 20, 100), 0);
 ---
 
 <Layout title="Bienvenido">
