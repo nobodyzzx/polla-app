@@ -19,6 +19,7 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
     .update({ monto_pagado: monto })
     .eq('id', userId);
 
-  if (error) return redirect('/admin/usuarios?err=' + encodeURIComponent(error.message));
-  return redirect('/admin/usuarios?msg=Monto+actualizado');
+  const back = form.get('back')?.toString() ?? '/admin/usuarios';
+  if (error) return redirect(back + '?err=' + encodeURIComponent(error.message));
+  return redirect(back + '?msg=Monto+actualizado');
 };

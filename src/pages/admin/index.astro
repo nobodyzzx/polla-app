@@ -408,7 +408,7 @@ function formatDate(d: string) {
                       🟥🟥 2ª Roja
                     </button>
                   </form>
-                  <div class="ml-auto flex gap-1.5">
+                  <div class="ml-auto flex items-center gap-1.5 flex-wrap justify-end">
                     <form method="POST" action="/api/admin/payment">
                       <input type="hidden" name="userId" value={p.id} />
                       <input type="hidden" name="field" value="pago70" />
@@ -425,6 +425,19 @@ function formatDate(d: string) {
                       <button type="submit" disabled={!p.pago_70}
                         class={`text-xs px-2.5 py-1.5 rounded-lg border font-semibold min-h-[36px] ${!p.pago_70 ? 'bg-brand-800/40 border-brand-700/30 text-slate-600 cursor-not-allowed' : p.pago_50 ? 'bg-gol/10 border-gol/40 text-gol' : 'bg-gold/10 border-gold/50 text-gold'}`}>
                         {p.pago_50 ? '✓' : '+'} 50Bs
+                      </button>
+                    </form>
+                    <form method="POST" action="/api/admin/set-monto-pagado" class="flex items-center gap-1">
+                      <input type="hidden" name="user_id" value={p.id} />
+                      <input type="hidden" name="back" value="/admin" />
+                      <input name="monto_pagado" type="number" min="0" max="9999"
+                        value={p.monto_pagado ?? 0}
+                        title="Monto total depositado en Bs"
+                        class="w-16 bg-brand-800 border border-brand-700 rounded-lg px-2 py-1.5 text-xs text-white font-mono text-center focus:outline-none focus:border-gold/50 min-h-[36px]" />
+                      <button type="submit"
+                        class="text-xs px-2 py-1.5 rounded-lg border bg-brand-800 border-brand-700 text-slate-400 hover:text-white hover:border-brand-600 transition min-h-[36px]"
+                        title="Guardar monto depositado">
+                        Bs ✓
                       </button>
                     </form>
                   </div>
