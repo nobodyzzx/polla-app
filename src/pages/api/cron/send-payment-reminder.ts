@@ -35,7 +35,7 @@ export const GET: APIRoute = async ({ request }) => {
   const [{ data: players }, { data: settingsRows }] = await Promise.all([
     supabaseAdmin
       .from('profiles')
-      .select('username, pago_70, pago_50')
+      .select('username, pago_70, pago_50, monto_pagado')
       .eq('participa', true)
       .eq('expulsado', false)
       .order('username', { ascending: true }),
@@ -52,14 +52,22 @@ export const GET: APIRoute = async ({ request }) => {
       weekday: 'short', day: 'numeric', month: 'short',
       hour: '2-digit', minute: '2-digit',
       timeZone: 'America/La_Paz',
-    hour12: false
+      hour12: false,
     });
   }
 
+  function efectivo(p: any): number {
+    const m = p.monto_pagado ?? 0;
+    if (m > 0) return m;
+    if (p.pago_50) return 120;
+    if (p.pago_70) return 70;
+    return 0;
+  }
+
   const all        = players ?? [];
-  const completos  = all.filter(p => p.pago_70 && p.pago_50);
-  const parciales  = all.filter(p => p.pago_70 && !p.pago_50);
-  const pendientes = all.filter(p => !p.pago_70);
+  const completos  = all.filter(p => (p.monto_pagado ?? 0) >= 120 || p.pago_50);
+  const parciales  = all.filter(p => !completos.includes(p) && ((p.monto_pagado ?? 0) >= 70 || p.pago_70));
+  const pendientes = all.filter(p => !completos.includes(p) && !parciales.includes(p));
 
   // Si todos pagaron completo no tiene sentido mandar el recordatorio
   if (pendientes.length === 0 && parciales.length === 0) {
@@ -71,13 +79,17 @@ export const GET: APIRoute = async ({ request }) => {
   if (deadline50) deadlines.push(`_⏰ 50 Bs: hasta ${fmtIso(deadline50)}_`);
 
   const lines: string[] = [];
-  completos.forEach(p  => lines.push(`✅ ${p.username} — 120 Bs ✔`));
-  parciales.forEach(p  => lines.push(`⏳ ${p.username} — 70 Bs pagados · falta 50 Bs`));
+  completos.forEach(p => lines.push(`✅ ${p.username} — PAGADO 120 Bs ✔`));
+  parciales.forEach(p => {
+    const m = efectivo(p);
+    lines.push(`⏳ ${p.username} — ${m} Bs dep. · faltan ${120 - m} Bs`);
+  });
   pendientes.forEach(p => lines.push(`❌ ${p.username} — sin pago`));
 
-  const pozo     = completos.length * 100 + parciales.length * 50;
-  const referi   = (completos.length + parciales.length) * 20;
-  const premioMax = all.length * 100;
+  const participantes = [...completos, ...parciales];
+  const pozo      = participantes.reduce((s, p) => s + Math.min(efectivo(p) - 20, 100), 0);
+  const referi    = participantes.length * 20;
+  const metaTotal = participantes.length * 100;
 
   const text = [
     '💰 *ESTADO DE PAGOS*',
@@ -86,7 +98,7 @@ export const GET: APIRoute = async ({ request }) => {
     '',
     ...lines,
     '',
-    `💰 Pozo: ${pozo} Bs | ⚖️ Réferi: ${referi} Bs | Premio máx: ${premioMax} Bs`,
+    `💰 Pozo: ${pozo} Bs de ${metaTotal} posibles \u2502 ⚖️ Réferi: ${referi} Bs`,
     '🔗 mundial.tecnocondor.dev/pago',
   ].join('\n');
 
@@ -107,6 +119,6 @@ export const GET: APIRoute = async ({ request }) => {
   return json({
     ok: true,
     idMessage: result.idMessage,
-    stats: { total: all.length, completos: completos.length, parciales: parciales.length, pendientes: pendientes.length, pozo },
+    stats: { total: all.length, completos: completos.length, parciales: parciales.length, pendientes: pendientes.length, pozo, metaTotal },
   });
 };
