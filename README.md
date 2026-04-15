@@ -2,16 +2,22 @@
 
 App web de pronósticos para el Mundial FIFA 2026. Los jugadores predicen marcadores antes de cada partido y acumulan puntos según la precisión de sus pronósticos.
 
+[![Deploy](https://img.shields.io/badge/deploy-vercel-black?logo=vercel)](https://mundial.tecnocondor.dev)
+[![Astro](https://img.shields.io/badge/astro-6-FF5D01?logo=astro&logoColor=white)](https://astro.build)
+[![Supabase](https://img.shields.io/badge/supabase-postgresql-3ECF8E?logo=supabase&logoColor=white)](https://supabase.com)
+[![Tailwind CSS](https://img.shields.io/badge/tailwind-4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
+[![pnpm](https://img.shields.io/badge/pnpm-package_manager-F69220?logo=pnpm&logoColor=white)](https://pnpm.io)
+
 **[mundial.tecnocondor.dev](https://mundial.tecnocondor.dev)**
 
 ---
 
 ## Características
 
-- Pronósticos de marcador por partido (fase de grupos y eliminatorias)
+- Pronósticos de marcador por partido (grupos y eliminatorias)
 - Tabla de posiciones en tiempo real
-- Sistema de pagos con seguimiento de inscripciones (70 Bs + 50 Bs)
-- Panel de administración para referís (resultados, pagos, sanciones)
+- Seguimiento de inscripciones y estado de pagos (70 Bs + 50 Bs)
+- Panel de administración para referís
 - Notificaciones automáticas por WhatsApp vía n8n
 - Autenticación por email con Supabase Auth
 
@@ -22,28 +28,28 @@ App web de pronósticos para el Mundial FIFA 2026. Los jugadores predicen marcad
 ### Fase de grupos
 
 | Acierto | Puntos |
-|---------|--------|
-| Marcador exacto | 3 |
-| Ganador / empate correcto | 1 |
+|---------|:------:|
+| Marcador exacto | **3** |
+| Ganador / empate correcto | **1** |
 
 ### Fase eliminatoria — sin penales
 
 | Acierto | Puntos |
-|---------|--------|
-| Marcador exacto | 3 |
-| Ganador correcto | 1 |
-| No acertó ganador | 0 |
+|---------|:------:|
+| Marcador exacto | **3** |
+| Ganador correcto | **1** |
+| No acertó ganador | **0** |
 
 ### Fase eliminatoria — definición por penales *(empate en 120')*
 
-> Si el jugador no pronosticó empate recibe 0 puntos automáticamente.
+> Si el jugador no pronosticó empate recibe **0 puntos** automáticamente.
 
 | Acierto | Puntos |
-|---------|--------|
-| Marcador 90' exacto + marcador penales exacto | 6 |
-| Marcador 90' exacto + clasificado correcto | 4 |
-| Marcador 90' no exacto + clasificado correcto | 2 |
-| Marcador 90' no exacto + clasificado incorrecto | 1 |
+|---------|:------:|
+| Marcador 90' exacto + marcador penales exacto | **6** |
+| Marcador 90' exacto + clasificado correcto | **4** |
+| Marcador 90' no exacto + clasificado correcto | **2** |
+| Marcador 90' no exacto + clasificado incorrecto | **1** |
 
 > **Regla de jornada completa:** si el jugador no pronostica todos los partidos de una jornada, sus puntos de esa jornada se anulan.
 
@@ -54,9 +60,9 @@ App web de pronósticos para el Mundial FIFA 2026. Los jugadores predicen marcad
 La inscripción es de **120 Bs** en dos cuotas:
 
 | Cuota | Monto | Efecto |
-|-------|-------|--------|
-| 1er pago | 70 Bs | Habilita pronósticos |
-| 2do pago | 50 Bs | Participación completa en el pozo |
+|-------|:-----:|--------|
+| 1er pago | **70 Bs** | Habilita pronósticos |
+| 2do pago | **50 Bs** | Participación completa en el pozo |
 
 De cada pago, **20 Bs van al réferi** y el resto al pozo (hasta 100 Bs por jugador). El jugador con más puntos al final se lleva todo el pozo.
 
@@ -64,14 +70,21 @@ De cada pago, **20 Bs van al réferi** y el resto al pozo (hasta 100 Bs por juga
 
 ## Stack
 
+![Astro](https://img.shields.io/badge/Astro_6-SSR-FF5D01?style=flat-square&logo=astro&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white)
+![Tailwind](https://img.shields.io/badge/Tailwind_4-CSS-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white)
+![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-3ECF8E?style=flat-square&logo=supabase&logoColor=white)
+![Vercel](https://img.shields.io/badge/Vercel-Deploy-000000?style=flat-square&logo=vercel&logoColor=white)
+![n8n](https://img.shields.io/badge/n8n-Automatizaciones-EA4B71?style=flat-square&logo=n8n&logoColor=white)
+
 | Capa | Tecnología |
 |------|-----------|
-| Framework | [Astro 6](https://astro.build) (SSR) |
+| Framework | Astro 6 (SSR) con `@astrojs/vercel` |
 | Estilos | Tailwind CSS 4 |
-| Base de datos | [Supabase](https://supabase.com) — PostgreSQL + Auth + RLS |
-| Deploy | [Vercel](https://vercel.com) |
+| Base de datos | Supabase — PostgreSQL + Auth + RLS |
+| Deploy | Vercel (cada push a `main`) |
 | Fixtures | [football-data.org](https://www.football-data.org) |
-| Automatizaciones | n8n (mensajes WhatsApp diarios) |
+| Automatizaciones | n8n — mensajes WhatsApp diarios |
 
 ---
 
@@ -123,10 +136,8 @@ src/
 
 ## Deploy
 
-Cada push a `main` dispara un deploy automático en Vercel.
-
 ```bash
-git push  # → Vercel deploy automático
+git push  # → deploy automático en Vercel
 ```
 
 ---
@@ -135,7 +146,9 @@ git push  # → Vercel deploy automático
 
 Ver carpeta [`docs/`](./docs):
 
-- [`01-overview.md`](./docs/01-overview.md) — Resumen del sistema
-- [`02-admin.md`](./docs/02-admin.md) — Manual del referí/admin
-- [`03-jugadores.md`](./docs/03-jugadores.md) — Guía para jugadores
-- [`04-ops.md`](./docs/04-ops.md) — Operaciones y mantenimiento
+| Archivo | Contenido |
+|---------|-----------|
+| [`01-overview.md`](./docs/01-overview.md) | Resumen del sistema |
+| [`02-admin.md`](./docs/02-admin.md) | Manual del referí / admin |
+| [`03-jugadores.md`](./docs/03-jugadores.md) | Guía para jugadores |
+| [`04-ops.md`](./docs/04-ops.md) | Operaciones y mantenimiento |
