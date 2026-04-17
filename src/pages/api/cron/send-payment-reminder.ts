@@ -23,11 +23,12 @@ export const GET: APIRoute = async ({ request }) => {
     return json({ error: 'Unauthorized' }, 401);
   }
 
+  const apiUrl     = import.meta.env.GREEN_API_URL;
   const instanceId = import.meta.env.GREEN_API_INSTANCE;
   const apiToken   = import.meta.env.GREEN_API_TOKEN;
   const chatId     = import.meta.env.GREEN_API_CHAT_ID;
 
-  if (!instanceId || !apiToken || !chatId) {
+  if (!apiUrl || !instanceId || !apiToken || !chatId) {
     return json({ error: 'Green API env vars not configured' }, 500);
   }
 
@@ -103,8 +104,8 @@ export const GET: APIRoute = async ({ request }) => {
   ].join('\n');
 
   // Enviar mensaje via Green API
-  const apiUrl = `https://api.green-api.com/waInstance${instanceId}/sendMessage/${apiToken}`;
-  const res = await fetch(apiUrl, {
+  const sendUrl = `${apiUrl}/waInstance${instanceId}/sendMessage/${apiToken}`;
+  const res = await fetch(sendUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ chatId, message: text }),
