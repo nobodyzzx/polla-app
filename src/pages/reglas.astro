@@ -112,10 +112,11 @@ const casos = [
           <p class="text-xs text-slate-400 font-semibold">Si va a PENALES (solo si pronosticaste EMPATE en los 120'):</p>
           <div class="flex flex-col gap-2 text-sm">
             {[
-              { label: 'Empate exacto + penales exactos',        pts: '6 pts', color: 'text-gold' },
-              { label: 'Empate exacto + penales incorrectos',    pts: '4 pts', color: 'text-brand-400' },
-              { label: 'Empate errado + clasificado correcto',   pts: '2 pts', color: 'text-amarilla' },
-              { label: 'Empate errado + clasificado incorrecto', pts: '1 pt',  color: 'text-slate-400' },
+              { label: 'Empate exacto + penales exactos',                       pts: '6 pts', color: 'text-gold' },
+              { label: 'Empate exacto + penales incorrectos + clasificado correcto',   pts: '4 pts', color: 'text-brand-400' },
+              { label: 'Empate exacto + penales incorrectos + clasificado incorrecto', pts: '3 pts', color: 'text-brand-400' },
+              { label: 'Empate errado + clasificado correcto',                  pts: '2 pts', color: 'text-amarilla' },
+              { label: 'Empate errado + clasificado incorrecto',                pts: '1 pt',  color: 'text-slate-400' },
             ].map(({ label, pts, color }) => (
               <div class="flex justify-between items-center">
                 <span class="text-slate-300">{label}</span>
