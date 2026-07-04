@@ -19,7 +19,7 @@ import { getFixturesRange, getAllFixtures, mapStage } from '@/lib/football-api';
 import { teamKey, normTeam } from '@/lib/match-link';
 import { checkCronSecret, json } from '@/lib/cron';
 
-const PROVIDER = (import.meta.env.MATCH_PROVIDER ?? 'football-data').toLowerCase();
+const PROVIDER = (import.meta.env.MATCH_PROVIDER ?? 'espn').toLowerCase();
 // ESPN ve el calendario completo (sin ventana) → se alinea más días de una.
 // api-football solo da ~3 días → ventana corta.
 // ESPN agrupa fechas por horario EDT (no UTC): un partido de 01:00 UTC cae en el
@@ -40,7 +40,7 @@ export const GET: APIRoute = async ({ url, request }) => {
   // 1. Fixtures de grupo del proveedor.
   let apiAll;
   try {
-    apiAll = full ? await getAllFixtures('', 0) : await getFixturesRange(RANGE_FROM, RANGE_TO);
+    apiAll = full ? await getAllFixtures() : await getFixturesRange(RANGE_FROM, RANGE_TO);
   } catch (e: any) {
     return json({ error: 'Proveedor: ' + e.message }, 502);
   }

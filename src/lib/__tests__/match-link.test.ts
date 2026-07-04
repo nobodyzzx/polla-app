@@ -54,31 +54,20 @@ describe('isPlaceholderName', () => {
 });
 
 describe('linkMatches', () => {
-  it('empareja por external_id con football-data', () => {
+  it('empareja por hora+equipos (proveedor agnóstico)', () => {
     const apiMatch = makeApiMatch({ id: 10, utcDate: 'x', homeTeam: { name: 'A' }, awayTeam: { name: 'B' } });
     const out = linkMatches(
       [apiMatch],
-      [{ id: 'db1', external_id: 10, match_date: 'x', home_team: 'A', away_team: 'B' }],
-      'football-data',
+      [{ id: 'db1', match_date: 'x', home_team: 'A', away_team: 'B' }],
     );
     expect(out.size).toBe(1);
     expect(out.get(apiMatch)).toBe('db1');
   });
 
-  it('ignora db sin external_id con football-data', () => {
-    const out = linkMatches(
-      [makeApiMatch({ id: 10, utcDate: 'x', homeTeam: { name: 'A' }, awayTeam: { name: 'B' } })],
-      [{ id: 'db1', external_id: null, match_date: 'x', home_team: 'A', away_team: 'B' }],
-      'football-data',
-    );
-    expect(out.size).toBe(0);
-  });
-
   it('empareja por hora+equipos con espn', () => {
     const out = linkMatches(
       [makeApiMatch({ id: 100, utcDate: '2026-06-18T16:00:00Z', homeTeam: { name: 'Bolivia' }, awayTeam: { name: 'Argentina' } })],
-      [{ id: 'db1', external_id: null, match_date: '2026-06-18T16:00:00Z', home_team: 'Bolivia', away_team: 'Argentina' }],
-      'espn',
+      [{ id: 'db1', match_date: '2026-06-18T16:00:00Z', home_team: 'Bolivia', away_team: 'Argentina' }],
     );
     expect(out.size).toBe(1);
   });
@@ -86,26 +75,23 @@ describe('linkMatches', () => {
   it('empareja por hora usando placeholder (eliminatoria sin bracket definido)', () => {
     const out = linkMatches(
       [makeApiMatch({ id: 100, utcDate: '2026-06-18T16:00:00Z', homeTeam: { name: 'W74' }, awayTeam: { name: 'W75' } })],
-      [{ id: 'db1', external_id: null, match_date: '2026-06-18T16:00:00Z', home_team: 'W74', away_team: 'W75' }],
-      'espn',
+      [{ id: 'db1', match_date: '2026-06-18T16:00:00Z', home_team: 'W74', away_team: 'W75' }],
     );
     expect(out.size).toBe(1);
   });
 
-  it('respeta normalización de equipos con espn', () => {
+  it('respeta normalización de equipos', () => {
     const out = linkMatches(
       [makeApiMatch({ id: 100, utcDate: '2026-06-18T16:00:00Z', homeTeam: { name: 'USA' }, awayTeam: { name: 'Korea Republic' } })],
-      [{ id: 'db1', external_id: null, match_date: '2026-06-18T16:00:00Z', home_team: 'USA', away_team: 'South Korea' }],
-      'espn',
+      [{ id: 'db1', match_date: '2026-06-18T16:00:00Z', home_team: 'USA', away_team: 'South Korea' }],
     );
     expect(out.size).toBe(1);
   });
 
-  it('funciona con api-football', () => {
+  it('empareja correctamente con distintos formatos de fecha', () => {
     const out = linkMatches(
-      [makeApiMatch({ id: 100, utcDate: '2026-06-18T16:00:00Z', homeTeam: { name: 'Bolivia' }, awayTeam: { name: 'Argentina' } })],
-      [{ id: 'db1', external_id: null, match_date: '2026-06-18T16:00:00Z', home_team: 'Bolivia', away_team: 'Argentina' }],
-      'api-football',
+      [makeApiMatch({ id: 100, utcDate: '2026-06-18T16:00Z', homeTeam: { name: 'Bolivia' }, awayTeam: { name: 'Argentina' } })],
+      [{ id: 'db1', match_date: '2026-06-18T16:00:00+00:00', home_team: 'Bolivia', away_team: 'Argentina' }],
     );
     expect(out.size).toBe(1);
   });

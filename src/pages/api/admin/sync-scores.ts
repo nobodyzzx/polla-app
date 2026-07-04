@@ -4,23 +4,13 @@ import { getFixtures, deriveWinnerPenalties } from '@/lib/football-api';
 import { linkMatches, isPlaceholderName } from '@/lib/match-link';
 import { getAdminUser } from '@/lib/auth-helpers';
 
-const PROVIDER = (import.meta.env.MATCH_PROVIDER ?? 'football-data').toLowerCase();
-
-export const POST: APIRoute = async ({ request, cookies, redirect }) => {
+export const POST: APIRoute = async ({ cookies, redirect }) => {
   const admin = await getAdminUser(cookies, supabase, supabaseAdmin);
   if (!admin) return redirect('/login');
 
-  const form = await request.formData();
-  const code   = form.get('code')?.toString().trim().toUpperCase();
-  const season = parseInt(form.get('season')?.toString() ?? '');
-
-  if (!code || isNaN(season)) {
-    return redirect(`/admin?err=${encodeURIComponent('Código de torneo y temporada son obligatorios')}`);
-  }
-
   let allFixtures;
   try {
-    allFixtures = await getFixtures(code, season);
+    allFixtures = await getFixtures();
   } catch (e: any) {
     return redirect(`/admin?err=${encodeURIComponent('Error API: ' + e.message)}`);
   }
@@ -38,7 +28,7 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
   const pending = allFixtures.filter(f =>
     f.status !== 'FINISHED' && f.homeTeam?.name && f.awayTeam?.name
     && f.homeTeam.name !== 'TBD' && f.awayTeam.name !== 'TBD');
-  const pendingLink = linkMatches(pending, dbRows, PROVIDER);
+  const pendingLink = linkMatches(pending, dbRows);
 
   for (const f of pending) {
     const id = pendingLink.get(f);
@@ -55,7 +45,7 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
     return redirect(`/admin?msg=${encodeURIComponent('Equipos sincronizados. No hay partidos terminados aún.')}`);
   }
 
-  const finishedLink = linkMatches(finished, dbRows, PROVIDER);
+  const finishedLink = linkMatches(finished, dbRows);
 
   let updated = 0;
   const toCalculate: string[] = [];

@@ -3,7 +3,6 @@
  *
  * Endpoint para automatización externa (cron-job.org, uptime monitors, etc.)
  * No requiere sesión — autenticación por secret en query param.
- * Sincroniza el torneo configurado en TOURNAMENT_CODE / TOURNAMENT_SEASON.
  */
 import type { APIRoute } from 'astro';
 import { supabaseAdmin } from '@/lib/supabase';
@@ -15,7 +14,7 @@ import { alertGroupError } from '@/lib/whatsapp';
 import { emitLiveEvents } from '@/lib/live-events';
 import { runBackupChecks, pruneOldData } from '@/lib/backup';
 
-const PROVIDER = (import.meta.env.MATCH_PROVIDER ?? 'football-data').toLowerCase();
+const PROVIDER = (import.meta.env.MATCH_PROVIDER ?? 'espn').toLowerCase();
 
 // Heartbeat: cada corrida (éxito, skip o error) deja una fila en sync_logs para
 // que un cron muerto/colgado deje de ser invisible. Best-effort, nunca rompe.
@@ -46,18 +45,6 @@ export const GET: APIRoute = async ({ url, request }) => {
 
   const t0 = Date.now();
 
-  // TOURNAMENT_CODE/SEASON solo son necesarios para football-data (proveedor por
-  // temporada). ESPN y api-football consultan por fecha y no los requieren.
-  const code   = import.meta.env.TOURNAMENT_CODE;
-  const season = parseInt(import.meta.env.TOURNAMENT_SEASON ?? '');
-  const needsLegacy = PROVIDER === 'football-data';
-
-  if (needsLegacy && (!code || isNaN(season))) {
-    await logSync('error:config', { httpStatus: 500, error: 'TOURNAMENT_CODE/SEASON no configurados', t0 });
-    await alertGroupError({ source: 'sync', detail: 'Config faltante: TOURNAMENT_CODE/SEASON no configurados.' });
-    return json({ error: 'TOURNAMENT_CODE o TOURNAMENT_SEASON no configurados' }, 500);
-  }
-
   // Respaldos (antes del gate, para que el 'pre' corra aunque no haya partido en
   // ventana). Best-effort; no-op si GH_BACKUP_TOKEN/REPO no están configurados.
   if (!preview) {
@@ -68,13 +55,10 @@ export const GET: APIRoute = async ({ url, request }) => {
     if (nowD.getUTCHours() === 9 && nowD.getUTCMinutes() === 9) await pruneOldData();
   }
 
-  // Gate (proveedores por fecha/en-vivo): solo se llama a la API si hay un partido
-  // en ventana de juego (chequeo gratis en la BD). Sirve doble: ahorra cuota
-  // (api-football: 100/día) y permite pollear muy seguido (cada 1 min) para avisos
-  // en vivo sin golpear a ESPN las ~20h sin partidos. Ventana de 6h: cubre tiempo
-  // extra, demoras y reintentos tras una caída breve. football-data (por temporada)
-  // no se gatea. En preview no se gatea (se quiere ver el aviso aunque no haya ventana).
-  if (!preview && (PROVIDER === 'api-football' || PROVIDER === 'espn')) {
+  // Gate: solo se llama a la API si hay un partido en ventana de juego (6h).
+  // Sirve doble: ahorra cuota (api-football: 100/día) y permite pollear muy seguido
+  // (cada 1 min) para avisos en vivo sin golpear a ESPN las ~20h sin partidos.
+  if (!preview) {
     const nowIso = new Date().toISOString();
     const sinceIso = new Date(Date.now() - 6 * 3600 * 1000).toISOString();
     const { data: active } = await supabaseAdmin
@@ -100,7 +84,7 @@ export const GET: APIRoute = async ({ url, request }) => {
   // Los terminados se derivan filtrando status (evita una segunda request).
   let allFixtures;
   try {
-    allFixtures = await getFixtures(code, season);
+    allFixtures = await getFixtures();
   } catch (e: any) {
     await logSync('error:provider', { httpStatus: 502, error: e.message, t0 });
     await alertGroupError({ source: 'sync', detail: `El proveedor de marcadores falló: ${e.message}. Los resultados pueden no actualizarse.` });
@@ -111,7 +95,7 @@ export const GET: APIRoute = async ({ url, request }) => {
   // DB: partidos no terminados (candidatos para nombres y resultados).
   const { data: dbMatchesRaw } = await supabaseAdmin
     .from('matches')
-    .select('id, external_id, match_date, home_team, away_team, stage')
+    .select('id, match_date, home_team, away_team, stage')
     .eq('is_finished', false);
   const dbRows = dbMatchesRaw ?? [];
   const dbById = new Map(dbRows.map(d => [d.id, d]));
@@ -119,16 +103,16 @@ export const GET: APIRoute = async ({ url, request }) => {
   // ── 0. Eventos en vivo (arranque + gol) ─────────────────────────
   // Reusa los fixtures ya traídos (no llama al proveedor). Best-effort.
   if (preview) {
-    const live = await emitLiveEvents(allFixtures, dbRows, PROVIDER, { dryRun: true });
+    const live = await emitLiveEvents(allFixtures, dbRows, { dryRun: true });
     return json({ preview: true, provider: PROVIDER, liveEvents: live });
   }
-  await emitLiveEvents(allFixtures, dbRows, PROVIDER);
+  await emitLiveEvents(allFixtures, dbRows);
 
   // ── 1. Rellenar nombres de placeholders de bracket ya definidos ──
   const pending = allFixtures.filter(f =>
     f.status !== 'FINISHED' && f.homeTeam?.name && f.awayTeam?.name
     && f.homeTeam.name !== 'TBD' && f.awayTeam.name !== 'TBD');
-  const pendingLink = linkMatches(pending, dbRows, PROVIDER);
+  const pendingLink = linkMatches(pending, dbRows);
 
   let namesUpdated = 0;
   for (const f of pending) {
@@ -150,7 +134,7 @@ export const GET: APIRoute = async ({ url, request }) => {
     return json({ ok: true, provider: PROVIDER, namesUpdated, scoresUpdated: 0, message: 'Sin partidos terminados nuevos' });
   }
 
-  const finishedLink = linkMatches(finished, dbRows, PROVIDER);
+  const finishedLink = linkMatches(finished, dbRows);
 
   let scoresUpdated = 0;
   const toCalculate: string[] = [];

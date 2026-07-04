@@ -1,7 +1,7 @@
 /**
- * Facade de datos de partidos. Enruta entre proveedores según MATCH_PROVIDER:
- *   - 'football-data' (por defecto): football-data.org v4 (consulta por temporada).
- *   - 'api-football': API-Football / api-sports.io (consulta por fecha / en vivo).
+ * Facade de datos de partidos. Enruta entre proveedores según MATCH_PROVIDER.
+ *   - 'espn' (por defecto): ESPN API pública (sin key ni cuota).
+ *   - 'api-football': API-Football / api-sports.io.
  *
  * Ambos devuelven ApiMatch (forma normalizada en lib/match-types). El resto de la
  * app (sync, import-fixture, scoring) no sabe qué proveedor está activo.
@@ -12,73 +12,32 @@ import * as espn from './providers/espn';
 
 export type { ApiMatch };
 
-const PROVIDER = (import.meta.env.MATCH_PROVIDER ?? 'football-data').toLowerCase();
+const PROVIDER = (import.meta.env.MATCH_PROVIDER ?? 'espn').toLowerCase();
 
 export function getLiveMatches(): Promise<ApiMatch[]> {
   if (PROVIDER === 'espn') return espn.getLiveMatches();
   return apiFootball.getLiveMatches();
 }
 
-// ── Proveedor football-data.org ──────────────────────────────────
-const FD_BASE = 'https://api.football-data.org/v4';
-
-async function fdFetch(path: string) {
-  const key = import.meta.env.FOOTBALL_API_KEY;
-  if (!key) throw new Error('FOOTBALL_API_KEY no configurada');
-
-  const res = await fetch(`${FD_BASE}${path}`, {
-    headers: { 'X-Auth-Token': key },
-  });
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new Error(`API ${res.status}: ${body}`);
-  }
-  return res.json();
-}
-
-async function fdGetFixtures(code: string, season: number): Promise<ApiMatch[]> {
-  const data = await fdFetch(`/competitions/${code}/matches?season=${season}`);
-  return data.matches ?? [];
-}
-
-async function fdGetFinishedMatches(code: string, season: number): Promise<ApiMatch[]> {
-  const data = await fdFetch(`/competitions/${code}/matches?season=${season}&status=FINISHED`);
-  return data.matches ?? [];
-}
-
 // ── API pública (enruta por proveedor) ───────────────────────────
-export async function getFixtures(code: string, season: number): Promise<ApiMatch[]> {
+export async function getFixtures(): Promise<ApiMatch[]> {
   if (PROVIDER === 'espn') return espn.getFixtures();
-  if (PROVIDER === 'api-football') return apiFootball.getFixtures();
-  return fdGetFixtures(code, season);
+  return apiFootball.getFixtures();
 }
 
-export async function getFinishedMatches(code: string, season: number): Promise<ApiMatch[]> {
+export async function getFinishedMatches(): Promise<ApiMatch[]> {
   if (PROVIDER === 'espn') return espn.getFinishedMatches();
-  if (PROVIDER === 'api-football') return apiFootball.getFinishedMatches();
-  return fdGetFinishedMatches(code, season);
+  return apiFootball.getFinishedMatches();
 }
 
-/**
- * Fixtures en un rango de offsets de día (UTC). Usado por reconcile-fixtures.
- * Solo lo soportan los proveedores por fecha (espn / api-football); football-data
- * consulta por temporada, así que devuelve vacío.
- */
 export async function getFixturesRange(fromOffset: number, toOffset: number): Promise<ApiMatch[]> {
   if (PROVIDER === 'espn') return espn.getFixturesRange(fromOffset, toOffset);
-  if (PROVIDER === 'api-football') return apiFootball.getFixturesRange(fromOffset, toOffset);
-  return [];
+  return apiFootball.getFixturesRange(fromOffset, toOffset);
 }
 
-/**
- * TODO el calendario del torneo. ESPN lo trae completo (rango de fechas);
- * football-data por temporada; api-football free no puede (season bloqueado) →
- * cae a su ventana móvil.
- */
-export async function getAllFixtures(code: string, season: number): Promise<ApiMatch[]> {
+export async function getAllFixtures(): Promise<ApiMatch[]> {
   if (PROVIDER === 'espn') return espn.getAllFixtures();
-  if (PROVIDER === 'api-football') return apiFootball.getFixtures();
-  return fdGetFixtures(code, season);
+  return apiFootball.getFixtures();
 }
 
 // ── Mapeo al esquema de la app (común a ambos proveedores) ────────

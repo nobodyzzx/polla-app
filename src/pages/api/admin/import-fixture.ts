@@ -3,27 +3,20 @@ import { supabase, supabaseAdmin } from '@/lib/supabase';
 import { getFixtures, mapStage, mapGroupName, mapRound, mapJornada, deriveWinnerPenalties } from '@/lib/football-api';
 import { getAdminUser } from '@/lib/auth-helpers';
 
-export const POST: APIRoute = async ({ request, cookies, redirect }) => {
+export const POST: APIRoute = async ({ cookies, redirect }) => {
   const admin = await getAdminUser(cookies, supabase, supabaseAdmin);
   if (!admin) return redirect('/login');
 
-  const form = await request.formData();
-  const code   = form.get('code')?.toString().trim().toUpperCase();
-  const season = parseInt(form.get('season')?.toString() ?? '');
-
-  if (!code || isNaN(season)) {
-    return redirect(`/admin?err=${encodeURIComponent('Código de torneo y temporada son obligatorios')}`);
-  }
-
+  // ESPN trae el torneo completo por fecha (no necesita código ni temporada).
   let fixtures;
   try {
-    fixtures = await getFixtures(code, season);
+    fixtures = await getFixtures();
   } catch (e: any) {
     return redirect(`/admin?err=${encodeURIComponent('Error API: ' + e.message)}`);
   }
 
   if (!fixtures.length) {
-    return redirect(`/admin?err=${encodeURIComponent('No se encontraron partidos para ese torneo/temporada')}`);
+    return redirect(`/admin?err=${encodeURIComponent('No se encontraron partidos en el proveedor')}`);
   }
 
   const rows = fixtures.map(f => {
@@ -58,5 +51,5 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
     return redirect(`/admin?err=${encodeURIComponent('Error DB: ' + error.message)}`);
   }
 
-  return redirect(`/admin?msg=${encodeURIComponent(`Fixture importado: ${rows.length} partidos (${code} ${season})`)}`);
+  return redirect(`/admin?msg=${encodeURIComponent(`Fixture importado: ${rows.length} partidos`)}`);
 };

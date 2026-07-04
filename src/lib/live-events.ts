@@ -258,7 +258,6 @@ async function kickoffPredicciones(matchId: string, home: string, away: string):
 export async function emitLiveEvents(
   fixtures: ApiMatch[],
   dbRows: DbMatchRow[],
-  provider: string,
   opts: { dryRun?: boolean } = {},
 ): Promise<string[]> {
   const dryRun = opts.dryRun === true;
@@ -283,7 +282,7 @@ export async function emitLiveEvents(
     const live = fixtures.filter(f => f.status === 'IN_PLAY' || f.status === 'PAUSED');
     if (!live.length) return out;
 
-    const link = linkMatches(live, dbRows, provider);
+    const link = linkMatches(live, dbRows);
 
     for (const f of live) {
       const matchId = link.get(f);

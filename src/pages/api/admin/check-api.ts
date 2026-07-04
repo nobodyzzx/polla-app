@@ -6,28 +6,17 @@ export const GET: APIRoute = async ({ cookies }) => {
   const admin = await getAdminUser(cookies, supabase, supabaseAdmin);
   if (!admin) return new Response(JSON.stringify({ error: 'No autorizado' }), { status: 401 });
 
-  const key = import.meta.env.FOOTBALL_API_KEY;
-  if (!key) {
-    return new Response(JSON.stringify({ error: 'FOOTBALL_API_KEY no configurada' }), { status: 500 });
-  }
-
-  const res = await fetch('https://api.football-data.org/v4/competitions', {
-    headers: { 'X-Auth-Token': key },
-  });
+  const res = await fetch('https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard?dates=20260701');
   const data = await res.json();
 
-  if (!res.ok) {
-    return new Response(JSON.stringify({ error: `API ${res.status}`, detail: data }), { status: 200 });
-  }
-
-  const competitions = (data.competitions ?? []).map((c: any) => ({
-    code: c.code,
-    name: c.name,
-    area: c.area?.name,
-    plan: c.plan,
+  const events = (data.events ?? []).map((e: any) => ({
+    id: e.id,
+    date: e.date,
+    name: e.name,
+    status: e.competitions?.[0]?.status?.type?.description,
   }));
 
-  return new Response(JSON.stringify({ competitions, count: competitions.length }), {
+  return new Response(JSON.stringify({ provider: 'espn', events, count: events.length }), {
     headers: { 'Content-Type': 'application/json' },
   });
 };
