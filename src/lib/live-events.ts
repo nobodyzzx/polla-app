@@ -221,6 +221,40 @@ async function teaserMediotiempo(matchId: string, h: number, a: number): Promise
   }
 }
 
+/**
+ * Lista de pronósticos del partido para el aviso de arranque. Al pegar el pitazo
+ * inicial las apuestas ya están cerradas y reveladas, así que se pueden mostrar.
+ * Incluye el score de penales / clasificado cuando el usuario pronosticó empate en
+ * eliminatoria. Ordena por nombre. Nunca rompe: ante error, cadena vacía.
+ */
+async function kickoffPredicciones(matchId: string, home: string, away: string): Promise<string> {
+  try {
+    const { data } = await supabaseAdmin
+      .from('predictions')
+      .select('user_home, user_away, user_home_pen, user_away_pen, user_winner_penalties, profiles(username)')
+      .eq('match_id', matchId);
+    if (!data?.length) return '';
+
+    const rows = [...data].sort((a: any, b: any) =>
+      (a.profiles?.username ?? '').localeCompare(b.profiles?.username ?? ''));
+
+    const lines = rows.map((r: any) => {
+      const name = r.profiles?.username ?? 'Alguien';
+      let s = `• *${name}*: ${r.user_home}-${r.user_away}`;
+      if (r.user_home === r.user_away && r.user_winner_penalties) {
+        const wName = r.user_winner_penalties === 'home' ? spanishName(home) : spanishName(away);
+        const penScore = r.user_home_pen != null && r.user_away_pen != null
+          ? `${r.user_home_pen}-${r.user_away_pen} pen · ` : '';
+        s += ` _(${penScore}${wName})_`;
+      }
+      return s;
+    });
+    return `📋 *Pronósticos (${rows.length}):*\n${lines.join('\n')}`;
+  } catch {
+    return '';
+  }
+}
+
 export async function emitLiveEvents(
   fixtures: ApiMatch[],
   dbRows: DbMatchRow[],
@@ -262,13 +296,15 @@ export async function emitLiveEvents(
       const curH = f.score.fullTime.home ?? 0;
       const curA = f.score.fullTime.away ?? 0;
 
-      // 1. Arranque del partido.
+      // 1. Arranque del partido (con los pronósticos ya cerrados del grupo).
       if (!(await exists(matchId, 'kickoff', 0, 0))) {
+        const preds = await kickoffPredicciones(matchId, home, away);
         const text = [
           '🟢 *¡ARRANCÓ EL PARTIDO!*',
           `${teamFlag(home)} *${spanishName(home)}* vs *${spanishName(away)}* ${teamFlag(away)}`,
           '',
           '⚽ Que empiece el sufrimiento. Suerte la van a necesitar.',
+          ...(preds ? ['', preds] : []),
         ].join('\n');
         await emit(text, 'live-kickoff', { match_id: matchId, type: 'kickoff', home_score: 0, away_score: 0 });
       }
