@@ -19,7 +19,7 @@ if (!user) { Astro.cookies.delete("sb-access-token", { path: "/" }); Astro.cooki
 
 const { data: profile } = await supabase
   .from('profiles')
-  .select('es_referi, username, puntos_totales')
+  .select('es_referi, username, puntos_totales, participa')
   .eq('id', user.id)
   .single();
 
@@ -143,6 +143,41 @@ if (pendingRaw?.length) {
   }));
 }
 
+// ── Atención: siguientes partidos sin pronosticar ──
+const { data: nextMatches } = await supabaseAdmin
+  .from('matches')
+  .select('id, home_team, away_team, match_date')
+  .eq('is_finished', false)
+  .gte('match_date', new Date().toISOString())
+  .order('match_date', { ascending: true })
+  .limit(5);
+
+const nextMatchIds = (nextMatches ?? []).map(m => m.id);
+const { data: nextPreds } = nextMatchIds.length
+  ? await supabaseAdmin.from('predictions').select('user_id, match_id').in('match_id', nextMatchIds)
+  : { data: [] };
+
+const predsByMatch: Record<string, Set<string>> = {};
+for (const p of nextPreds ?? []) {
+  if (!predsByMatch[p.match_id]) predsByMatch[p.match_id] = new Set();
+  predsByMatch[p.match_id].add(p.user_id);
+}
+
+const participants = (profiles ?? []).filter((p: any) => p.participa && !p.expulsado);
+const matchMissingPreds = nextMatches?.map(m => {
+  const predicted = predsByMatch[m.id] ?? new Set();
+  const missing = participants.filter((p: any) => !predicted.has(p.id));
+  return { match: m, missing, missingCount: missing.length };
+}) ?? [];
+
+// ── Últimos accesos del sistema ──
+const { data: recentLogs } = await supabaseAdmin
+  .from('system_log')
+  .select('category, summary, created_at')
+  .eq('category', 'acceso')
+  .order('created_at', { ascending: false })
+  .limit(10);
+
 // Mensajes de los endpoints (?msg= / ?err=)
 const msg = Astro.url.searchParams.get('msg');
 const err = Astro.url.searchParams.get('err');
@@ -158,6 +193,40 @@ const err = Astro.url.searchParams.get('err');
         {profile.username}
       </span>
     </div>
+
+    <!-- ── TABLERO DE ATENCIÓN ── -->
+    {(stPendiente > 0 || stSancionados > 0 || matchMissingPreds.some(m => m.missingCount > 0)) && (
+    <section class="bg-brand-900 border-2 border-brand-700/60 rounded-2xl p-4 space-y-3">
+      <h2 class="font-display text-xl text-white tracking-wide flex items-center gap-2">
+        <span>🔔</span> Atención
+      </h2>
+      <div class="grid gap-2 text-xs">
+        {stPendiente > 0 && (
+          <div class="flex items-center gap-2 bg-fifared/10 border border-fifared/30 rounded-xl px-3 py-2">
+            <span class="text-lg">💰</span>
+            <span class="text-slate-300"><strong class="text-fifared">{stPendiente}</strong> jugador(es) sin pago</span>
+            <button data-jump-tab="pagos" class="ml-auto text-gol hover:text-white transition px-2 py-1 rounded-lg border border-gol/30">Ver</button>
+          </div>
+        )}
+        {stSancionados > 0 && (
+          <div class="flex items-center gap-2 bg-amarilla/10 border border-amarilla/30 rounded-xl px-3 py-2">
+            <span class="text-lg">🟨</span>
+            <span class="text-slate-300"><strong class="text-amarilla">{stSancionados}</strong> jugador(es) sancionados</span>
+            <button data-jump-tab="tarjetas" class="ml-auto text-gol hover:text-white transition px-2 py-1 rounded-lg border border-gol/30">Ver</button>
+          </div>
+        )}
+        {matchMissingPreds.filter(m => m.missingCount > 0).slice(0, 3).map(m => (
+          <div class="flex items-center gap-2 bg-gold/10 border border-gold/30 rounded-xl px-3 py-2">
+            <span class="text-lg">📋</span>
+            <span class="text-slate-300">
+              <strong class="text-gold">{m.missingCount}</strong> sin pronóstico para <strong>{spanishName(m.match.home_team)} vs {spanishName(m.match.away_team)}</strong>
+            </span>
+            <a href="/admin/pronosticos" class="ml-auto text-gol hover:text-white transition px-2 py-1 rounded-lg border border-gol/30">Ir</a>
+          </div>
+        ))}
+      </div>
+    </section>
+    )}
 
     <!-- ── ACCESOS RÁPIDOS ── -->
     <div class="grid grid-cols-3 gap-3">
@@ -263,8 +332,8 @@ const err = Astro.url.searchParams.get('err');
 
         <div class="flex items-center justify-between">
           <span class="text-xs text-slate-500">Proveedor:</span>
-          <a href="https://www.football-data.org" target="_blank" rel="noopener"
-            class="text-xs text-gold/80 hover:text-gold transition font-mono">football-data.org</a>
+          <span
+            class="text-xs text-gold/80 font-mono">ESPN (sin API key)</span>
         </div>
 
         <div class="text-xs text-slate-500 space-y-1">
@@ -557,7 +626,7 @@ const err = Astro.url.searchParams.get('err');
         <p class="text-xs text-slate-500">
           Cron via <span class="text-slate-400">pg_cron + pg_net</span> en Supabase —
           <code class="text-slate-300 bg-brand-800 px-1 rounded">*/5 16-23,0-5 * * *</code>
-          (cada 5 min · 12:00–01:59 Bolivia · 2 llamadas/run a football-data.org).
+          (cada 5 min · 12:00–01:59 Bolivia · ESPN, sin API key).
           Se activa ejecutando
           <code class="text-slate-300 bg-brand-800 px-1 rounded">20260101000008_cron_sync.sql</code>
           en DataGrip con la URL de producción.
@@ -662,6 +731,23 @@ const err = Astro.url.searchParams.get('err');
       </div>
     </div><!-- /tab-config -->
 
+    <!-- ── ÚLTIMOS ACCESOS ── -->
+    <section class="bg-brand-900 border border-brand-700/60 rounded-2xl p-4 space-y-2">
+      <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-widest">Últimos accesos</h3>
+      {recentLogs && recentLogs.length > 0 ? (
+        <div class="space-y-1">
+          {recentLogs.map((log: any) => (
+            <div class="flex items-center justify-between gap-2 text-xs">
+              <span class="text-slate-400 truncate">{log.summary}</span>
+              <span class="text-slate-600 flex-shrink-0 font-mono">{fmtFecha(log.created_at, { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' })}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p class="text-xs text-slate-600">Sin registros de acceso</p>
+      )}
+    </section>
+
   </div>
 </Layout>
 
@@ -692,6 +778,23 @@ const err = Astro.url.searchParams.get('err');
   }
   document.addEventListener('DOMContentLoaded', initAdminTabs);
   document.addEventListener('astro:page-load', initAdminTabs);
+
+  // Botones "Ver" que saltan a una pestaña
+  function initJumpButtons() {
+    document.querySelectorAll<HTMLButtonElement>('[data-jump-tab]').forEach(btn => {
+      if (btn.dataset.jumpInit) return;
+      btn.dataset.jumpInit = '1';
+      btn.addEventListener('click', () => {
+        const tab = btn.dataset.jumpTab;
+        if (tab) {
+          const tabBtn = document.querySelector<HTMLButtonElement>(`.admin-tab-btn[data-tab="${tab}"]`);
+          tabBtn?.click();
+        }
+      });
+    });
+  }
+  initJumpButtons();
+  document.addEventListener('astro:page-load', initJumpButtons);
 </script>
 
 <script is:inline>

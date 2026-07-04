@@ -14,7 +14,7 @@ const supabase = createRequestClient(); // sesión aislada por petición (ver li
 const { data: { user } } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
 if (!user) { Astro.cookies.delete("sb-access-token", { path: "/" }); Astro.cookies.delete("sb-refresh-token", { path: "/" }); return Astro.redirect("/login"); }
 
-const { data: navProfile } = await supabase.from('profiles').select('username, puntos_totales, es_referi').eq('id', user.id).single();
+const { data: navProfile } = await supabase.from('profiles').select('username, puntos_totales, es_referi, participa').eq('id', user.id).single();
 if (!navProfile?.es_referi) return Astro.redirect('/dashboard');
 
 const [
@@ -180,6 +180,7 @@ const WA_ICON = `<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor
           <button id="toggle-all" data-mode="expand" class="text-xs text-slate-400 hover:text-white border border-brand-700 rounded-lg px-2.5 py-1.5 transition">⊕ Expandir todo</button>
           {/* Frescura: hora del render + refresco manual (la página se autorefresca sola) */}
           <div class="ml-auto flex items-center gap-2 flex-shrink-0">
+            <a href="/api/admin/export-csv" class="text-xs text-slate-400 hover:text-white border border-brand-700 rounded-lg px-2.5 py-1.5 transition whitespace-nowrap">📥 CSV</a>
             <span class="text-[11px] text-slate-500 whitespace-nowrap">Actualizado <span id="updated-at" class="text-slate-300 tabular-nums">{renderedAt}</span></span>
             <button id="btn-refresh" class="text-xs text-gol hover:text-white border border-gol/40 bg-gol/10 rounded-lg px-2.5 py-1.5 transition whitespace-nowrap">🔄 Actualizar</button>
           </div>
@@ -256,7 +257,7 @@ const WA_ICON = `<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor
                     <div class="flex items-center gap-2 text-sm font-semibold text-white">
                       <span class="flex-shrink-0">{teamFlag(m.home_team)}</span>
                       <span>{spanishName(m.home_team)}</span>
-                      <span class="text-brand-500 font-display flex-shrink-0">
+                      <span data-edit-score data-match-id={m.id} data-stage={m.stage} data-finished={m.is_finished ? '1' : '0'} class="text-brand-500 font-display flex-shrink-0 cursor-pointer hover:text-gold transition rounded px-1 -mx-1">
                         {m.is_finished ? `${m.home_score}–${m.away_score}` : 'vs'}
                       </span>
                       <span>{spanishName(m.away_team)}</span>
@@ -274,10 +275,19 @@ const WA_ICON = `<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor
                       }
                       <span class={submitted.length === players.length ? 'text-gol' : 'text-slate-500'}>{submitted.length}/{players.length}</span>
                       <button
+                        data-remind-wa
+                        data-di={di}
+                        data-mi={mi}
+                        class="flex items-center gap-1 bg-brand-800 border border-brand-700 text-slate-400 hover:text-white hover:border-brand-500 transition px-2 py-1 rounded-full font-medium flex-shrink-0 text-xs"
+                        title="Recordar a quienes faltan pronosticar"
+                      >
+                        🔔 WA
+                      </button>
+                      <button
                         data-share-match
                         data-di={di}
                         data-mi={mi}
-                        class="ml-auto flex items-center gap-1 bg-[#25D366]/10 border border-[#25D366]/30 text-[#25D366] hover:bg-[#25D366]/20 transition px-2 py-1 rounded-full font-medium flex-shrink-0"
+                        class="flex items-center gap-1 bg-[#25D366]/10 border border-[#25D366]/30 text-[#25D366] hover:bg-[#25D366]/20 transition px-2 py-1 rounded-full font-medium flex-shrink-0"
                         title="Copiar este partido para WhatsApp"
                       >
                         <Fragment set:html={WA_ICON} /> WA
@@ -292,11 +302,11 @@ const WA_ICON = `<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor
                         const pred = preds[pl.id];
                         const sanc = isSanctioned(pl.id, m.match_date);
                         return (
-                          <div data-pl={pl.id} data-has={pred ? '1' : '0'} class="pred-cell items-center gap-2 py-0.5 border-b border-brand-800/30">
+                          <div data-pl={pl.id} data-has={pred ? '1' : '0'} data-match-id={m.id} data-player-id={pl.id} data-stage={m.stage} data-editable={!m.is_finished ? '1' : '0'} class="pred-cell items-center gap-2 py-0.5 border-b border-brand-800/30">
                             {sanc && <span class="flex-shrink-0" title="Tarjeta roja — jornada anulada">🟥</span>}
                             <span class="text-xs text-slate-400 truncate flex-1 min-w-0">{pl.username}</span>
                             {pred?.ingresado_por_referi && <span class="text-[10px] flex-shrink-0" title="Ingresado por el réferi">⚖️</span>}
-                            <span class={`text-xs font-mono tabular-nums flex-shrink-0 ${predClass(pred, m)}`}>
+                            <span data-pred-val class={`text-xs font-mono tabular-nums flex-shrink-0 cursor-pointer hover:bg-brand-700/50 rounded px-1 -mx-1 transition ${predClass(pred, m)}`}>
                               {predLabel(pred)}
                             </span>
                             <span class={`text-[10px] font-bold w-6 text-right flex-shrink-0 ${pred && pred.points_earned > 0 ? 'text-gol' : 'text-slate-600'}`}>
@@ -348,6 +358,22 @@ const WA_ICON = `<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor
   #pron-root[data-iso] .sinpron   { display: none !important; }
   /* Oculto por filtro de estado (partido / día). */
   .hidden-f { display: none !important; }
+  /* Inline editor inputs */
+  .inline-edit-form { display: inline-flex; align-items: center; gap: 2px; }
+  .inline-edit-form input[type=number] { width: 24px; padding: 0; text-align: center; background: #0d1117; border: 1px solid #d4a74d; border-radius: 4px; color: #d4a74d; font-size: 11px; font-family: monospace; }
+  .inline-edit-form input[type=number]:focus { outline: none; border-color: #00e676; }
+  .inline-edit-form button { background: none; border: none; cursor: pointer; font-size: 11px; line-height: 1; padding: 0 2px; }
+  .inline-edit-form .ie-save { color: #00e676; }
+  .inline-edit-form .ie-cancel { color: #ef4444; }
+  /* Score editor inputs */
+  .score-edit-form { display: inline-flex; align-items: center; gap: 4px; }
+  .score-edit-form input[type=number] { width: 32px; padding: 2px; text-align: center; background: #0d1117; border: 1px solid #d4a74d; border-radius: 6px; color: #d4a74d; font-size: 14px; font-family: monospace; font-weight: 700; }
+  .score-edit-form input[type=number]:focus { outline: none; border-color: #00e676; }
+  .score-edit-form .se-dash { color: #4b5563; font-weight: bold; }
+  .score-edit-form button { background: none; border: none; cursor: pointer; font-size: 13px; padding: 0 4px; }
+  .score-edit-form .se-save { color: #00e676; }
+  .score-edit-form .se-cancel { color: #ef4444; }
+  .score-edit-form .se-pen-label { font-size: 10px; color: #d4a74d; }
 </style>
 
 <script is:inline type="application/json" id="pronosticos-data" set:html={JSON.stringify(shareData)} />
@@ -675,4 +701,184 @@ const WA_ICON = `<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor
 
   initAutoRefresh();
   document.addEventListener('astro:page-load', initAutoRefresh);
+
+  // ── Edición inline de pronósticos ─────────────────────────────────────
+  function initInlinePredEdit() {
+    document.querySelectorAll<HTMLElement>('[data-pred-val][data-editable="1"]').forEach(el => {
+      if (el.dataset.inlineInit) return;
+      el.dataset.inlineInit = '1';
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (el.querySelector('.inline-edit-form')) return;
+        const cell = el.closest('[data-match-id]') as HTMLElement;
+        if (!cell) return;
+        const matchId = cell.dataset.matchId!;
+        const playerId = cell.dataset.playerId!;
+        const stage = cell.dataset.stage!;
+        const current = el.textContent?.trim() || '';
+        const hasPred = current !== '—';
+        let h = '', a = '', hp = '', ap = '';
+        if (hasPred) {
+          const cleaned = current.replace(/[()]/g, '');
+          const parts = cleaned.split(/[–\-–]\s*/);
+          h = parts[0]?.trim() || '';
+          let rest = parts.slice(1).join(' ').trim();
+          const penMatch = rest.match(/^(\d+)\s+(\d+)$/);
+          if (penMatch) { a = penMatch[1]; hp = ''; ap = ''; }
+          else {
+            const sp = rest.split(/\s+/);
+            a = sp[0] || '';
+            if (sp.length >= 3 && sp[1] === 'pen' || sp[1] === '(') {
+              const penParts = rest.match(/\(?\s*(\d+)\s*[–\-]\s*(\d+)/);
+              if (penParts) { hp = penParts[1]; ap = penParts[2]; }
+            }
+          }
+        }
+        const isKO = stage === 'knockout';
+        el.innerHTML = `<form class="inline-edit-form" data-meid="${matchId}" data-plid="${playerId}" data-isko="${isKO ? '1' : '0'}" onsubmit="return false">
+          <input type="number" class="ie-home" min="0" max="20" value="${h}" required>
+          <span class="text-slate-500" style="font-size:10px">–</span>
+          <input type="number" class="ie-away" min="0" max="20" value="${a}" required>
+          ${isKO ? `<span class="ie-pen-label" style="font-size:9px;color:#d4a74d">pen</span>
+          <input type="number" class="ie-hp" min="0" max="20" value="${hp}" placeholder="–" style="width:20px;font-size:10px">
+          <span style="font-size:9px;color:#4b5563">–</span>
+          <input type="number" class="ie-ap" min="0" max="20" value="${ap}" placeholder="–" style="width:20px;font-size:10px">` : ''}
+          <button type="submit" class="ie-save" title="Guardar">✓</button>
+          <button type="button" class="ie-cancel" title="Cancelar">✕</button>
+        </form>`;
+        const form = el.querySelector('.inline-edit-form')!;
+        form.addEventListener('submit', async () => {
+          const home = parseInt((form.querySelector('.ie-home') as HTMLInputElement).value);
+          const away = parseInt((form.querySelector('.ie-away') as HTMLInputElement).value);
+          let homePen: number|null = null, awayPen: number|null = null;
+          if (isKO) {
+            const hpi = (form.querySelector('.ie-hp') as HTMLInputElement)?.value;
+            const api = (form.querySelector('.ie-ap') as HTMLInputElement)?.value;
+            if (hpi !== '' && api !== '') { homePen = parseInt(hpi); awayPen = parseInt(api); }
+          }
+          try {
+            const res = await fetch('/api/admin/manual-prediction', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ user_id: playerId, match_id: matchId, user_home: home, user_away: away, user_home_pen: homePen, user_away_pen: awayPen }),
+            });
+            const data = await res.json();
+            if (data.ok) {
+              const penTxt = homePen !== null ? ` (${homePen}–${awayPen})` : '';
+              el.textContent = `${home}–${away}${penTxt}`;
+              el.className = el.className.replace(/text-(gold|gol|slate-\d+)/g, '').trim() + ' text-slate-300';
+              showToast('✓ Pronóstico actualizado');
+            } else {
+              showToast('⚠️ ' + (data.error ?? 'Error'));
+              el.textContent = current;
+            }
+          } catch {
+            showToast('⚠️ Error de red');
+            el.textContent = current;
+          }
+        });
+        form.querySelector('.ie-cancel')?.addEventListener('click', () => { el.textContent = current; });
+      });
+    });
+  }
+  initInlinePredEdit();
+  document.addEventListener('astro:page-load', initInlinePredEdit);
+
+  // ── Edición inline de marcadores ──────────────────────────────────────
+  function initInlineScoreEdit() {
+    document.querySelectorAll<HTMLElement>('[data-edit-score]').forEach(el => {
+      if (el.dataset.scoreInit) return;
+      el.dataset.scoreInit = '1';
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (el.querySelector('.score-edit-form')) return;
+        const matchId = el.dataset.matchId!;
+        const stage = el.dataset.stage!;
+        const finished = el.dataset.finished === '1';
+        if (finished) return;
+        const current = el.textContent?.trim() || 'vs';
+        const parts = current.split(/[–\-–]/);
+        const h = parts[0]?.trim() || '';
+        const a = parts[1]?.trim() || '';
+        const isKO = stage === 'knockout';
+        el.innerHTML = `<form class="score-edit-form" data-meid="${matchId}" data-isko="${isKO ? '1' : '0'}" onsubmit="return false">
+          <input type="number" class="se-home" min="0" max="25" value="${h === 'vs' ? '' : h}" required placeholder="0">
+          <span class="se-dash">–</span>
+          <input type="number" class="se-away" min="0" max="25" value="${a === 'vs' ? '' : a}" required placeholder="0">
+          ${isKO ? `<span class="se-pen-label">pen</span>
+          <input type="number" class="se-hp" min="0" max="25" placeholder="0" style="width:28px">
+          <span class="se-dash" style="font-size:12px">–</span>
+          <input type="number" class="se-ap" min="0" max="25" placeholder="0" style="width:28px">` : ''}
+          <button type="submit" class="se-save" title="Guardar">✓</button>
+          <button type="button" class="se-cancel" title="Cancelar">✕</button>
+        </form>`;
+        const form = el.querySelector('.score-edit-form')!;
+        form.addEventListener('submit', async () => {
+          const homeScore = parseInt((form.querySelector('.se-home') as HTMLInputElement).value);
+          const awayScore = parseInt((form.querySelector('.se-away') as HTMLInputElement).value);
+          let homePen: number|null = null, awayPen: number|null = null;
+          if (isKO) {
+            const hpi = (form.querySelector('.se-hp') as HTMLInputElement)?.value;
+            const api = (form.querySelector('.se-ap') as HTMLInputElement)?.value;
+            if (hpi !== '' && api !== '') { homePen = parseInt(hpi); awayPen = parseInt(api); }
+          }
+          try {
+            const res = await fetch('/api/admin/score', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ matchId, homeScore, awayScore, homePen, awayPen }),
+            });
+            const data = await res.json();
+            if (data.ok) {
+              showToast('✓ Marcador guardado — recargando…');
+              setTimeout(() => location.reload(), 1000);
+            } else {
+              showToast('⚠️ ' + (data.error ?? 'Error'));
+              el.textContent = current;
+            }
+          } catch {
+            showToast('⚠️ Error de red');
+            el.textContent = current;
+          }
+        });
+        form.querySelector('.se-cancel')?.addEventListener('click', () => { el.textContent = current; });
+      });
+    });
+  }
+  initInlineScoreEdit();
+  document.addEventListener('astro:page-load', initInlineScoreEdit);
+
+  // ── Recordatorio WhatsApp ─────────────────────────────────────────────
+  function initRemindWA() {
+    document.querySelectorAll<HTMLButtonElement>('[data-remind-wa]').forEach(btn => {
+      if (btn.dataset.remindInit) return;
+      btn.dataset.remindInit = '1';
+      btn.addEventListener('click', async (e) => {
+        e.preventDefault(); e.stopPropagation();
+        const di = Number(btn.dataset.di);
+        const mi = Number(btn.dataset.mi);
+        const data = getData();
+        const d = data[di];
+        const m = d?.matches[mi];
+        if (!m) return;
+        const missing = m.players.filter(p => p.uh === null && p.ua === null && !p.sanctioned);
+        if (!missing.length) { showToast('✅ Todos pronosticaron'); return; }
+        if (!confirm(`¿Recordar a ${missing.length} jugador(es) por WhatsApp?`)) return;
+        try {
+          const res = await fetch('/api/admin/remind-whatsapp', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ match_id: m.id, player_names: missing.map(p => p.name) }),
+          });
+          const data2 = await res.json();
+          if (data2.ok) showToast('✓ Recordatorio enviado');
+          else showToast('⚠️ ' + (data2.error ?? 'Error'));
+        } catch {
+          showToast('⚠️ Error de red');
+        }
+      });
+    });
+  }
+  initRemindWA();
+  document.addEventListener('astro:page-load', initRemindWA);
 </script>
