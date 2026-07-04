@@ -14,7 +14,7 @@ if (!user) return Astro.redirect('/login');
 const { data: profile } = await supabase.from('profiles').select('es_referi').eq('id', user.id).single();
 if (!profile?.es_referi) return Astro.redirect('/dashboard');
 
-const { data: navProfile } = await supabase.from('profiles').select('username, puntos_totales, es_referi').eq('id', user.id).single();
+const { data: navProfile } = await supabase.from('profiles').select('username, puntos_totales, es_referi, participa').eq('id', user.id).single();
 
 const { data: knockoutMatches } = await supabaseAdmin
   .from('matches')

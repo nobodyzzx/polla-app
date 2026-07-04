@@ -1,6 +1,7 @@
 ---
 import Layout from '@/layouts/Layout.astro';
-import { createRequestClient, supabaseAdmin } from '@/lib/supabase';
+import LiveMatches from '@/components/LiveMatches.astro';
+import { createRequestClient, supabaseAdmin, fetchAllRows } from '@/lib/supabase';
 import { rankProfiles } from '@/lib/standings';
 import { betaNow, betaNowMs } from '@/lib/betaTime';
 import { spanishName, isoForTeam } from '@/lib/isoFlags';
@@ -49,11 +50,16 @@ const [
   supabase.from('profiles').select('id, username, puntos_totales, es_referi, participa, monto_pagado').eq('expulsado', false).eq('participa', true).order('puntos_totales', { ascending: false }),
   supabase.from('sanctions').select('user_id, type').eq('active', true).gte('created_at', diaInicio).lt('created_at', diaFin),
   supabase.from('matches').select('*').eq('is_finished', false).gte('match_date', ahora).order('match_date', { ascending: true }).limit(6),
-  supabase.from('profiles').select('username, puntos_totales, es_referi').eq('id', user.id).single(),
+  supabase.from('profiles').select('username, puntos_totales, es_referi, participa').eq('id', user.id).single(),
   supabase.from('matches').select('id, home_team, away_team, home_score, away_score, home_pen, away_pen, winner_penalties, match_date, jornada, stage').eq('is_finished', true).order('match_date', { ascending: false }).limit(20),
   supabase.from('matches').select('match_date, is_finished').lte('match_date', ahora),
   supabase.from('matches').select('*', { count: 'exact', head: true }),
 ]);
+
+// UI de jugador (bloque "Mis próximos partidos", estado pronosticado) se muestra
+// según participa, NO según es_referi: un admin puro (participa=false) no pronostica,
+// así que no ve el CTA ni corre la query de sus predicciones.
+const isPlayer = myProfile?.participa !== false;
 
 // Un partido en curso (IN_PLAY/PAUSED) no es "próximo": lo excluimos de la lista.
 const proximosPartidos = (proximosPartidosRaw ?? []).filter((m: any) => !['IN_PLAY', 'PAUSED'].includes(m.status));
@@ -111,7 +117,7 @@ function getMatchLockState(m: any) {
 // Prediction status for upcoming matches
 const upcomingMatchIds = (proximosPartidos ?? []).map((m: any) => m.id);
 let predictedSet = new Set<string>();
-if (upcomingMatchIds.length > 0) {
+if (isPlayer && upcomingMatchIds.length > 0) {
   const { data: myPreds } = await supabase
     .from('predictions')
     .select('match_id')
@@ -151,6 +157,61 @@ const today = fmtFecha(betaNow(), {
   weekday: 'long', day: 'numeric', month: 'long',
 });
 
+// ── Movimiento de posiciones vs el último día jugado ─────────────
+// Reconstruye la tabla "hasta antes del último día jugado" sumando points_earned
+// de partidos finalizados en días Bolivia anteriores al más reciente. No hay tabla
+// de snapshots: se deriva del historial de pronósticos puntuados.
+const participantIds = new Set(rows.map(r => r.id));
+const scoredPreds = await fetchAllRows<any>((from, to) => supabaseAdmin
+  .from('predictions')
+  .select('user_id, points_earned, match:matches!inner(match_date, is_finished)')
+  .not('points_earned', 'is', null)
+  .eq('matches.is_finished', true)
+  .order('id', { ascending: true })
+  .range(from, to));
+
+const finishedDayMsSet = new Set<number>();
+for (const p of scoredPreds) {
+  const md = p.match?.match_date;
+  if (md) finishedDayMsSet.add(boliviaDayStart(new Date(md).getTime()).getTime());
+}
+const lastFinishedDayMs = finishedDayMsSet.size ? Math.max(...finishedDayMsSet) : 0;
+const hasPrevDay = finishedDayMsSet.size > 1; // sin día anterior no hay movimiento
+
+const prevPointsMap = new Map<string, number>();
+if (hasPrevDay) {
+  for (const p of scoredPreds) {
+    if (!participantIds.has(p.user_id)) continue;
+    const md = p.match?.match_date;
+    if (!md) continue;
+    const dayMs = boliviaDayStart(new Date(md).getTime()).getTime();
+    if (dayMs < lastFinishedDayMs) {
+      prevPointsMap.set(p.user_id, (prevPointsMap.get(p.user_id) ?? 0) + (p.points_earned ?? 0));
+    }
+  }
+}
+// Orden previo por puntos previos; a igualdad se mantiene el orden actual (estable).
+const currIndexById = new Map(rows.map((r, i) => [r.id, i]));
+const prevOrder = [...rows]
+  .map(r => ({ id: r.id, pts: prevPointsMap.get(r.id) ?? 0 }))
+  .sort((a, b) => (b.pts - a.pts) || (currIndexById.get(a.id)! - currIndexById.get(b.id)!));
+const prevPosById = new Map(prevOrder.map((r, i) => [r.id, i]));
+function movement(id: string): number {
+  if (!hasPrevDay) return 0;
+  const prev = prevPosById.get(id);
+  const curr = currIndexById.get(id);
+  if (prev == null || curr == null) return 0;
+  return prev - curr; // >0 subió, <0 bajó
+}
+
+// ── Duelo con el rival directo (arriba / abajo del usuario) ──────
+const myIndex = rows.findIndex(r => r.id === user.id);
+const myRow = myIndex >= 0 ? rows[myIndex] : null;
+const rivalAbove = myIndex > 0 ? rows[myIndex - 1] : null;
+const rivalBelow = myIndex >= 0 && myIndex < rows.length - 1 ? rows[myIndex + 1] : null;
+const gapAbove = rivalAbove && myRow ? rivalAbove.puntos_totales - myRow.puntos_totales : null;
+const gapBelow = rivalBelow && myRow ? myRow.puntos_totales - rivalBelow.puntos_totales : null;
+
 // navProfile viene de su propia query — independiente del filtro participa
 const navProfile = myProfile ?? null;
 
@@ -168,6 +229,12 @@ const proximoCierreMs = (() => {
   const dayMatches = upcomingByDay.get(dayKey) ?? [nextMatch];
   return Math.min(...dayMatches.map((m: any) => new Date(m.match_date).getTime())) - 2 * 3600 * 1000;
 })();
+
+// Banner de cierre: partidos de una jornada ABIERTA que el jugador aún no pronosticó.
+const openUnpredicted = isPlayer
+  ? (proximosPartidos ?? []).filter((m: any) => getMatchLockState(m) === 'open' && !predictedSet.has(m.id))
+  : [];
+const showCierreBanner = openUnpredicted.length > 0 && proximoCierreMs != null && proximoCierreMs > nowMs;
 
 // Próximo partido — countdown
 function countdownLabel(matchDate: string): string {
@@ -248,8 +315,28 @@ function barFill(i: number, isMe: boolean) {
         </div>
       )}
     </div>
-    {/* ── MIS PRÓXIMOS PARTIDOS — acceso rápido a pronosticar ── */}
-    {proximosPartidos && proximosPartidos.length > 0 && (
+    {/* ── BANNER DE CIERRE — jornada abierta sin completar (solo jugadores) ── */}
+    {showCierreBanner && (
+      <a href="/predictions" class="block rounded-2xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 transition active:bg-amber-500/20 hover:bg-amber-500/15">
+        <div class="flex items-center justify-between gap-3">
+          <div class="min-w-0">
+            <p class="text-sm font-semibold text-amber-300">
+              ⏱ Te {openUnpredicted.length === 1 ? 'queda' : 'quedan'} {openUnpredicted.length} partido{openUnpredicted.length === 1 ? '' : 's'} sin pronosticar
+            </p>
+            <p class="text-xs text-amber-400/80 mt-0.5">
+              Cierra en <span class="font-bold tabular-nums" data-cierre-countdown={proximoCierreMs}>—</span>
+            </p>
+          </div>
+          <span class="text-amber-300 text-sm font-bold flex-shrink-0">Pronosticar →</span>
+        </div>
+      </a>
+    )}
+
+    {/* ── PARTIDOS EN VIVO (puntos provisionales) — se rellena por JS ── */}
+    <LiveMatches />
+
+    {/* ── MIS PRÓXIMOS PARTIDOS — acceso rápido a pronosticar (solo jugadores) ── */}
+    {isPlayer && proximosPartidos && proximosPartidos.length > 0 && (
       <section class="rounded-2xl border border-gold/40 bg-gradient-to-br from-brand-900 to-brand-800/40 overflow-hidden">
         <div class="flex items-center justify-between px-4 py-3 border-b border-brand-700/50">
           <h2 class="font-display text-xl text-white tracking-wide">⚽ MIS PRÓXIMOS PARTIDOS</h2>
@@ -316,6 +403,41 @@ function barFill(i: number, isMe: boolean) {
       </div>
     </div>
 
+    {/* ── TU DUELO — rival directo arriba/abajo (solo jugadores) ── */}
+    {isPlayer && myRow && (rivalAbove || rivalBelow) && (
+      <div class="rounded-2xl border border-brand-700/60 bg-brand-900 p-4">
+        <h2 class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">⚔️ Tu duelo</h2>
+        <div class="grid grid-cols-2 gap-3">
+          {rivalAbove ? (
+            <div class="rounded-xl bg-brand-800/40 border border-brand-700/40 px-3 py-2.5 min-w-0">
+              <p class="text-[11px] text-slate-500">⬆ Alcanzar a</p>
+              <p class="text-sm font-semibold text-white truncate">{rivalAbove.username}</p>
+              <p class="text-xs text-fifared font-bold mt-0.5">
+                {gapAbove === 0 ? 'empatados (pierdes el desempate)' : `te faltan ${gapAbove} pt${gapAbove === 1 ? '' : 's'}`}
+              </p>
+            </div>
+          ) : (
+            <div class="rounded-xl bg-gold/10 border border-gold/30 px-3 py-2.5 flex items-center">
+              <p class="text-sm font-bold text-gold">👑 Eres el líder</p>
+            </div>
+          )}
+          {rivalBelow ? (
+            <div class="rounded-xl bg-brand-800/40 border border-brand-700/40 px-3 py-2.5 min-w-0">
+              <p class="text-[11px] text-slate-500">⬇ Te persigue</p>
+              <p class="text-sm font-semibold text-white truncate">{rivalBelow.username}</p>
+              <p class="text-xs text-gol font-bold mt-0.5">
+                {gapBelow === 0 ? 'empatados (ganas el desempate)' : `+${gapBelow} pt${gapBelow === 1 ? '' : 's'} de ventaja`}
+              </p>
+            </div>
+          ) : (
+            <div class="rounded-xl bg-brand-800/40 border border-brand-700/40 px-3 py-2.5 flex items-center">
+              <p class="text-xs text-slate-500">Cierras la tabla — a remontar 💪</p>
+            </div>
+          )}
+        </div>
+      </div>
+    )}
+
     <!-- STANDINGS — mobile cards / desktop table -->
     <div>
 
@@ -330,8 +452,13 @@ function barFill(i: number, isMe: boolean) {
               {/* Línea difuminada izquierda */}
               <div class={`absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b ${accentLine(i, isMe)}`} />
 
-              <div class="text-2xl w-8 text-center flex-shrink-0">
-                {MEDALS[i] !== undefined ? MEDALS[i] : <span class="font-mono text-slate-500 text-sm">{i + 1}</span>}
+              <div class="w-8 flex-shrink-0 flex flex-col items-center justify-center">
+                <span class="text-2xl leading-none">
+                  {MEDALS[i] !== undefined ? MEDALS[i] : <span class="font-mono text-slate-500 text-sm">{i + 1}</span>}
+                </span>
+                {(() => { const mv = movement(p.id); if (mv === 0) return null; return (
+                  <span class={`text-[10px] font-bold leading-none mt-0.5 ${mv > 0 ? 'text-gol' : 'text-fifared'}`} title={mv > 0 ? `Subió ${mv}` : `Bajó ${-mv}`}>{mv > 0 ? `▲${mv}` : `▼${-mv}`}</span>
+                ); })()}
               </div>
               <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-2 flex-wrap">
@@ -393,10 +520,13 @@ function barFill(i: number, isMe: boolean) {
               const isMe = p.id === user.id;
               return (
                 <tr class={`border-b border-brand-800/40 ${isMe ? 'bg-brand-700/20' : i === 0 ? 'bg-yellow-500/8' : i === 1 ? 'bg-slate-400/5' : i === 2 ? 'bg-amber-700/8' : i % 2 === 0 ? '' : 'bg-brand-800/30'}`}>
-                  <td class="py-3 pl-0 pr-4 font-mono text-lg w-10">
+                  <td class="py-3 pl-0 pr-4 font-mono text-lg w-14">
                     <div class="flex items-center gap-2 h-full">
                       <div class={`w-[3px] h-8 rounded-full bg-gradient-to-b flex-shrink-0 ${accentLine(i, isMe)}`} />
                       {MEDALS[i] !== undefined ? MEDALS[i] : <span class="text-slate-500 text-sm">{i + 1}</span>}
+                      {(() => { const mv = movement(p.id); if (mv === 0) return null; return (
+                        <span class={`text-[10px] font-bold leading-none ${mv > 0 ? 'text-gol' : 'text-fifared'}`} title={mv > 0 ? `Subió ${mv}` : `Bajó ${-mv}`}>{mv > 0 ? `▲${mv}` : `▼${-mv}`}</span>
+                      ); })()}
                     </div>
                   </td>
                   <td class="px-4 py-3">
@@ -591,5 +721,36 @@ function waShareInit() {
 }
 
 document.addEventListener('astro:page-load', waShareInit);
+
+// ── Cuenta regresiva del banner de cierre ────────────────────
+function fmtCountdown(ms: number): string {
+  if (ms <= 0) return 'cerrada';
+  const total = Math.floor(ms / 1000);
+  const d = Math.floor(total / 86400);
+  const h = Math.floor((total % 86400) / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${m}m`;
+  const s = total % 60;
+  return `${m}m ${s}s`;
+}
+
+let cierreTimer: number | undefined;
+function cierreCountdownInit() {
+  const el = document.querySelector<HTMLElement>('[data-cierre-countdown]');
+  if (cierreTimer) window.clearInterval(cierreTimer);
+  if (!el) return;
+  const deadline = Number(el.dataset.cierreCountdown);
+  if (!deadline) return;
+  const tick = () => {
+    const left = deadline - Date.now();
+    el.textContent = fmtCountdown(left);
+    if (left <= 0 && cierreTimer) window.clearInterval(cierreTimer);
+  };
+  tick();
+  cierreTimer = window.setInterval(tick, 1000);
+}
+document.addEventListener('astro:page-load', cierreCountdownInit);
+document.addEventListener('astro:before-swap', () => { if (cierreTimer) window.clearInterval(cierreTimer); });
 </script>
 

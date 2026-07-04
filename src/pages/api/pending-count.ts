@@ -15,6 +15,16 @@ export const GET: APIRoute = async ({ cookies }) => {
   });
   if (!user) return new Response(JSON.stringify({ count: 0 }), { status: 200 });
 
+  // Quien no participa (p.ej. admin puro) no pronostica → nunca tiene pendientes.
+  const { data: me } = await supabase
+    .from('profiles')
+    .select('participa')
+    .eq('id', user.id)
+    .single();
+  if (me && me.participa === false) {
+    return new Response(JSON.stringify({ count: 0 }), { status: 200 });
+  }
+
   const cutoff = new Date(Date.now() + 2 * 3600 * 1000).toISOString();
   const [{ data: openMatches }, { data: myPreds }] = await Promise.all([
     supabase.from('matches')

@@ -19,7 +19,7 @@ if (sessionErr || !user) return Astro.redirect('/login');
 const [{ data: profile }, { data: predHistory }, { data: sanctions }, { data: ranking }] = await Promise.all([
   supabaseAdmin
     .from('profiles')
-    .select('username, puntos_totales, es_referi, pago_70, pago_50, expulsado, apodo_cambiado')
+    .select('username, puntos_totales, es_referi, participa, pago_70, pago_50, expulsado, apodo_cambiado')
     .eq('id', user.id)
     .single(),
   supabaseAdmin
@@ -42,6 +42,11 @@ const [{ data: profile }, { data: predHistory }, { data: sanctions }, { data: ra
 ]);
 
 const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+
+// Perfil de jugador vs admin puro: quien no participa (participa=false) no tiene
+// puntos, ranking, pagos, tarjetas ni historial — se le muestra solo identidad +
+// ajustes (nickname/contraseña). Un admin que además juega (participa=true) ve todo.
+const isPlayer = profile?.participa !== false;
 
 // Posición en la tabla general (solo participantes no expulsados).
 const rankIndex = (ranking ?? []).findIndex((p: any) => p.id === user.id);
@@ -83,6 +88,7 @@ const sortedPreds = ((predHistory ?? []) as any[]).sort(
 // en este mismo recorrido cronológico (sortedPreds ya viene ordenado por hora).
 let totalPartidos = 0, aciertos = 0, exactos = 0;
 let okOnly = 0, fallos = 0, sinPred = 0, ptsGrupos = 0, ptsElim = 0;
+let penProfeta = false; // acertó quién avanza en una tanda de penales (≥2 pts en partido con penales)
 type SeqItem = { acierto: boolean; icon: string; anulled: boolean };
 const seq: SeqItem[] = [];
 for (const p of sortedPreds) {
@@ -117,6 +123,9 @@ for (const p of sortedPreds) {
   // Secuencia para "forma" y racha (la racha ignora días anulados: castiga fallar,
   // no haber recibido una roja).
   seq.push({ acierto: hasPred && (exact || ok), icon, anulled: isAnulled });
+  // Vidente de penales: en un partido definido por penales, acertar el clasificado
+  // vale ≥2 pts (ver escala en [[project_penalty_scoring]]).
+  if (m.winner_penalties && (p.points_earned ?? 0) >= 2) penProfeta = true;
 
   let pen = '';
   if (hasPred && p.user_home === p.user_away && p.user_winner_penalties && p.user_home_pen !== null)
@@ -191,6 +200,7 @@ const achievements: Achievement[] = [
   { icon: '⭐', name: 'Primer exacto',   desc: 'Acertaste un marcador exacto',           got: exactos >= 1 },
   { icon: '💎', name: 'Francotirador',    desc: '5 marcadores exactos',                   got: exactos >= 5 },
   { icon: '🔥', name: 'En racha',         desc: '5 aciertos seguidos',                    got: bestStreak >= 5 },
+  { icon: '🥅', name: 'Vidente de penales', desc: 'Acertaste quién avanza en una tanda',  got: penProfeta },
   { icon: '🎯', name: 'Jornada perfecta', desc: 'Acertaste todos los partidos de un día', got: plenos >= 1, count: plenos },
   { icon: '🧼', name: 'Juego limpio',     desc: 'Sin tarjetas en todo el torneo',         got: cardItems.length === 0 && !profile?.expulsado },
   { icon: '👑', name: 'En la cima',       desc: 'Líder del ranking',                      got: rank === 1 },
@@ -261,7 +271,7 @@ const firstOpenIdx = jornadaHistory.findIndex((j) => !j.anulada); // abrir la 1�
       <div class="bg-brand-900 border border-brand-700/60 rounded-2xl p-5 space-y-4">
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0">
-            <p class="text-xs text-slate-500 uppercase tracking-wide">Jugador</p>
+            <p class="text-xs text-slate-500 uppercase tracking-wide">{isPlayer ? 'Jugador' : 'Administrador'}</p>
             <h2 class="font-display text-2xl text-white truncate">
               {profile?.username}{profile?.es_referi && <span class="text-gold text-base ml-1">⚖️</span>}
             </h2>
@@ -272,7 +282,8 @@ const firstOpenIdx = jornadaHistory.findIndex((j) => !j.anulada); // abrir la 1�
           )}
         </div>
 
-        <!-- Stats -->
+        <!-- Stats (solo jugadores) -->
+        {isPlayer && (
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
           <div class="bg-brand-800/50 rounded-xl px-2 py-2.5 text-center">
             <p class="font-display text-2xl text-gold leading-none">{profile?.puntos_totales ?? 0}</p>
@@ -291,10 +302,15 @@ const firstOpenIdx = jornadaHistory.findIndex((j) => !j.anulada); // abrir la 1�
             <p class="text-[10px] text-slate-500 uppercase tracking-wide mt-1">Exactos</p>
           </div>
         </div>
+        )}
+
+        {!isPlayer && (
+          <p class="text-sm text-slate-500 py-1">Cuenta de administración — no participa en la tabla de posiciones.</p>
+        )}
 
         <!-- Pagos: solo si queda algo pendiente. Con la competencia en curso y todo
              pagado, el bloque desaparece para no estorbar. -->
-        {(!profile?.pago_70 || !profile?.pago_50) && (
+        {isPlayer && (!profile?.pago_70 || !profile?.pago_50) && (
           <Fragment>
             <div class="h-px bg-brand-800"></div>
             <p class="text-xs text-slate-600 uppercase tracking-wide font-semibold">Pagos pendientes</p>
@@ -331,7 +347,8 @@ const firstOpenIdx = jornadaHistory.findIndex((j) => !j.anulada); // abrir la 1�
         )}
       </div>
 
-      <!-- Tus tarjetas -->
+      <!-- Tus tarjetas (solo jugadores) -->
+      {isPlayer && (
       <div class="bg-brand-900 border border-brand-700/60 rounded-2xl p-5 space-y-3">
         <div class="flex items-center justify-between">
           <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wide">🟨🟥 Tus tarjetas</h2>
@@ -372,9 +389,11 @@ const firstOpenIdx = jornadaHistory.findIndex((j) => !j.anulada); // abrir la 1�
           ⚖️ Amarillas y rojas se limpian cada jornada. Solo la doble roja es expulsión definitiva.
         </p>
       </div>
+      )}
     </div>
 
-    <!-- Rendimiento -->
+    <!-- Rendimiento (solo jugadores) -->
+    {isPlayer && (
     <div class="bg-brand-900 border border-brand-700/60 rounded-2xl p-5 space-y-4">
       <div class="flex items-center justify-between gap-2">
         <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wide">📊 Rendimiento</h2>
@@ -475,8 +494,10 @@ const firstOpenIdx = jornadaHistory.findIndex((j) => !j.anulada); // abrir la 1�
         ))}
       </div>
     </div>
+    )}
 
-    <!-- Tus puntos por partido -->
+    <!-- Tus puntos por partido (solo jugadores) -->
+    {isPlayer && (
     <div class="bg-brand-900 border border-brand-700/60 rounded-2xl p-5 space-y-4">
       <div class="flex items-center justify-between gap-3 flex-wrap">
         <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wide">Tus puntos por partido</h2>
@@ -548,6 +569,7 @@ const firstOpenIdx = jornadaHistory.findIndex((j) => !j.anulada); // abrir la 1�
         </div>
       )}
     </div>
+    )}
 
     <!-- Ajustes (2 columnas en desktop) -->
     <div class="grid gap-5 md:grid-cols-2 items-start">

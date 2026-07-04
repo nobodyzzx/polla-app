@@ -28,7 +28,7 @@ if (!user) {
 
 const { data: navProfile } = await supabase
   .from('profiles')
-  .select('username, puntos_totales, es_referi')
+  .select('username, puntos_totales, es_referi, participa')
   .eq('id', user.id)
   .single();
 if (!navProfile?.es_referi) return Astro.redirect('/dashboard');

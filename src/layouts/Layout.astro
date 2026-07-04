@@ -7,6 +7,7 @@ interface NavProfile {
   username: string;
   puntos_totales: number;
   es_referi: boolean;
+  participa?: boolean;
 }
 
 interface Props {
@@ -31,6 +32,12 @@ const APP_VERSION =
 let profile: NavProfile | null = navProfile ?? null;
 let showNav = isAuthed ?? false;
 
+// La UI de jugador (Mis Pronósticos, chip de puntos, badge de pendientes) se
+// muestra según `participa`, NO según es_referi: un admin puro (participa=false)
+// no ve nada de jugador; un admin que además juega (participa=true) sí. El menú
+// VAR sigue gobernado por es_referi, independiente de esto.
+const isPlayer = profile?.participa !== false; // undefined = jugador (compat)
+
 const pathname = Astro.url.pathname;
 const navLink = (href: string) => {
   const active = pathname === href || (href !== '/' && pathname.startsWith(href));
@@ -52,7 +59,7 @@ if (!isAuthed) {
     if (user && !navProfile) {
       const { data } = await supabase
         .from('profiles')
-        .select('username, puntos_totales, es_referi')
+        .select('username, puntos_totales, es_referi, participa')
         .eq('id', user.id)
         .single();
       profile = data;
@@ -297,11 +304,14 @@ if (!isAuthed) {
             <div class="hidden sm:flex items-center gap-0.5 flex-1 justify-center">
               <a href="/dashboard"   class={navLink('/dashboard')}>🏆 Tabla</a>
               <a href="/grupos"      class={navLink('/grupos')}>📊 Grupos</a>
-              <a href="/predictions" class={`${navLink('/predictions')} relative`}>
-                📅 Mis Pronósticos
-                <span id="pending-badge-desktop" class="hidden absolute -top-1 -right-1 min-w-[16px] h-4 px-1 bg-fifared text-white text-[10px] font-bold rounded-full flex items-center justify-center leading-none"></span>
-              </a>
+              {isPlayer && (
+                <a href="/predictions" class={`${navLink('/predictions')} relative`}>
+                  📅 Mis Pronósticos
+                  <span id="pending-badge-desktop" class="hidden absolute -top-1 -right-1 min-w-[16px] h-4 px-1 bg-fifared text-white text-[10px] font-bold rounded-full flex items-center justify-center leading-none"></span>
+                </a>
+              )}
               <a href="/pronosticos" class={navLink('/pronosticos')}>👥 La Polla</a>
+              {isPlayer && <a href="/mi-llave" class={navLink('/mi-llave')}>🗺️ Mi Llave</a>}
               <a href="/anuncios"    class={navLink('/anuncios')}>📣 Tablón</a>
               <a href="/reglas"      class={navLink('/reglas')}>📖 Reglas</a>
               {profile?.es_referi && (
@@ -336,7 +346,7 @@ if (!isAuthed) {
                   {(profile?.username ?? '?')[0].toUpperCase()}
                 </span>
                 <span class="font-medium">{profile?.username}</span>
-                <span class="text-gold font-bold text-xs">{profile?.puntos_totales ?? 0}p</span>
+                {isPlayer && <span class="text-gold font-bold text-xs">{profile?.puntos_totales ?? 0}p</span>}
               </a>
               <form method="POST" action="/api/auth/logout">
                 <button class="flex items-center justify-center w-9 h-9 rounded-lg text-slate-500 hover:text-fifared hover:bg-fifared/10 transition" title="Cerrar sesión">
@@ -349,18 +359,20 @@ if (!isAuthed) {
 
             {/* ── Mobile: accesos rápidos + hamburguesa ── */}
             <div class="flex sm:hidden items-center gap-1">
-              <a href="/predictions"
-                class={`relative flex items-center justify-center w-10 h-10 rounded-lg transition text-lg ${pathname.startsWith('/predictions') ? 'bg-gold/15 text-gold border border-gold/25' : 'text-slate-400 active:bg-brand-800'}`}
-                title="Pronósticos">
-                📅
-                <span id="pending-badge-mobile" class="hidden absolute top-0.5 right-0.5 min-w-[15px] h-[15px] px-0.5 bg-fifared text-white text-[9px] font-bold rounded-full flex items-center justify-center leading-none"></span>
-              </a>
+              {isPlayer && (
+                <a href="/predictions"
+                  class={`relative flex items-center justify-center w-10 h-10 rounded-lg transition text-lg ${pathname.startsWith('/predictions') ? 'bg-gold/15 text-gold border border-gold/25' : 'text-slate-400 active:bg-brand-800'}`}
+                  title="Pronósticos">
+                  📅
+                  <span id="pending-badge-mobile" class="hidden absolute top-0.5 right-0.5 min-w-[15px] h-[15px] px-0.5 bg-fifared text-white text-[9px] font-bold rounded-full flex items-center justify-center leading-none"></span>
+                </a>
+              )}
               <a href="/perfil"
                 class={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs transition ${pathname === '/perfil' ? 'bg-gold/15 border border-gold/25' : 'text-slate-300 active:bg-brand-800'}`}>
                 <span class="w-5 h-5 rounded-full bg-gradient-to-br from-gold/60 to-gold/30 flex items-center justify-center text-[10px] font-bold text-brand-950">
                   {(profile?.username ?? '?')[0].toUpperCase()}
                 </span>
-                <span class="text-gold font-bold">{profile?.puntos_totales ?? 0}p</span>
+                {isPlayer && <span class="text-gold font-bold">{profile?.puntos_totales ?? 0}p</span>}
               </a>
               <button id="menu-btn"
                 class="flex items-center justify-center w-10 h-10 rounded-lg text-slate-400 active:bg-brand-800 transition"
@@ -404,7 +416,7 @@ if (!isAuthed) {
                 <div class="text-sm font-semibold text-white">{profile?.username}</div>
                 <div class="text-xs text-slate-500">Mi perfil</div>
               </div>
-              <span class="text-gold font-bold text-sm">{profile?.puntos_totales ?? 0} pts</span>
+              {isPlayer && <span class="text-gold font-bold text-sm">{profile?.puntos_totales ?? 0} pts</span>}
             </a>
 
             <div class="h-px bg-brand-800 my-1" />
@@ -412,8 +424,9 @@ if (!isAuthed) {
             {[
               { href: '/dashboard',   icon: '🏆', label: 'Tabla de posiciones' },
               { href: '/grupos',      icon: '📊', label: 'Grupos y Eliminatorias' },
-              { href: '/predictions', icon: '📅', label: 'Mis Pronósticos', startsWith: true },
+              ...(isPlayer ? [{ href: '/predictions', icon: '📅', label: 'Mis Pronósticos', startsWith: true }] : []),
               { href: '/pronosticos', icon: '👥', label: 'La Polla · Resultados' },
+              ...(isPlayer ? [{ href: '/mi-llave', icon: '🗺️', label: 'Mi Llave · Bracket' }] : []),
               { href: '/anuncios',    icon: '📣', label: 'Tablón de anuncios' },
               { href: '/reglas',      icon: '📖', label: 'Reglamento' },
               // Oculto: ya no se está cobrando (no borrar — /pago sigue existiendo).

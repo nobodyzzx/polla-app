@@ -29,7 +29,7 @@ const [
   { data: rawMatches },
   { data: knockoutMatches },
 ] = await Promise.all([
-  supabase.from('profiles').select('username, puntos_totales, es_referi').eq('id', user.id).single(),
+  supabase.from('profiles').select('username, puntos_totales, es_referi, participa').eq('id', user.id).single(),
   supabase.from('matches').select('id, home_team, away_team, home_score, away_score, is_finished, status, group_name, match_date')
     .eq('stage', 'group').order('group_name').order('match_date'),
   supabase.from('matches').select('home_team, away_team, home_score, away_score, home_pen, away_pen, winner_penalties, is_finished, status, round, match_date')

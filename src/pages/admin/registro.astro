@@ -11,7 +11,7 @@ const supabase = createRequestClient(); // sesión aislada por petición (ver li
 const { data: { user } } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
 if (!user) { Astro.cookies.delete("sb-access-token", { path: "/" }); Astro.cookies.delete("sb-refresh-token", { path: "/" }); return Astro.redirect("/login"); }
 
-const { data: navProfile } = await supabase.from('profiles').select('username, puntos_totales, es_referi').eq('id', user.id).single();
+const { data: navProfile } = await supabase.from('profiles').select('username, puntos_totales, es_referi, participa').eq('id', user.id).single();
 if (!navProfile?.es_referi) return Astro.redirect('/dashboard');
 
 // Filtro opcional por categoría (?cat=whatsapp|marcador|pronostico|acceso).

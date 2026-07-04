@@ -1,6 +1,7 @@
 ---
 import Layout from '@/layouts/Layout.astro';
 import TeamName from '@/components/TeamName.astro';
+import LiveMatches from '@/components/LiveMatches.astro';
 import { createRequestClient, supabaseAdmin, fetchAllRows } from '@/lib/supabase';
 import { betaNowMs } from '@/lib/betaTime';
 import { boliviaDayStart, REVEAL_BEFORE_MS } from '@/lib/jornada';
@@ -16,7 +17,7 @@ const supabase = createRequestClient(); // sesión aislada por petición (ver li
 const { data: { user } } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
 if (!user) { Astro.cookies.delete("sb-access-token", { path: "/" }); Astro.cookies.delete("sb-refresh-token", { path: "/" }); return Astro.redirect("/login"); }
 
-const { data: navProfile } = await supabase.from('profiles').select('username, puntos_totales, es_referi').eq('id', user.id).single();
+const { data: navProfile } = await supabase.from('profiles').select('username, puntos_totales, es_referi, participa').eq('id', user.id).single();
 
 // La revelación abre 1h55m antes del primer partido del día (5 min después del
 // cierre de apuestas, que es 2h antes). REVEAL_BEFORE_MS vive en lib/jornada.ts.
@@ -192,6 +193,9 @@ const shareData = revealedDays.map((day) => ({
         Los pronósticos de todos se revelan <strong class="text-slate-400">1h 55m antes</strong> del primer partido de cada día — cuando las apuestas ya están cerradas.
       </p>
     </div>
+
+    {/* ── PARTIDOS EN VIVO (puntos provisionales) — se rellena por JS ── */}
+    <LiveMatches />
 
     <!-- Leyenda de colores -->
     <div class="flex flex-wrap gap-x-5 gap-y-1.5 text-xs bg-brand-900 border border-brand-800 rounded-xl px-4 py-3">
