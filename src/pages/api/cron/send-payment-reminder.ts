@@ -6,6 +6,7 @@
  */
 import type { APIRoute } from 'astro';
 import { supabaseAdmin } from '@/lib/supabase';
+import { sendWhatsApp } from '@/lib/whatsapp';
 import { estadoPago, aportePozo, CUOTA_REFERI_BS, APORTE_POZO_MAX_BS, PAGO_COMPLETO_BS } from '@/lib/payments';
 import { fmtFecha } from '@/lib/fechas';
 
@@ -23,15 +24,6 @@ export const GET: APIRoute = async ({ request }) => {
   const expected = import.meta.env.CRON_SECRET;
   if (expected && bearer !== expected) {
     return json({ error: 'Unauthorized' }, 401);
-  }
-
-  const apiUrl     = import.meta.env.GREEN_API_URL;
-  const instanceId = import.meta.env.GREEN_API_INSTANCE;
-  const apiToken   = import.meta.env.GREEN_API_TOKEN;
-  const chatId     = import.meta.env.GREEN_API_CHAT_ID;
-
-  if (!apiUrl || !instanceId || !apiToken || !chatId) {
-    return json({ error: 'Green API env vars not configured' }, 500);
   }
 
   // Obtener datos de pagos y settings en paralelo
@@ -95,23 +87,15 @@ export const GET: APIRoute = async ({ request }) => {
     '🔗 mundial.tecnocondor.dev/pago',
   ].join('\n');
 
-  // Enviar mensaje via Green API
-  const sendUrl = `${apiUrl}/waInstance${instanceId}/sendMessage/${apiToken}`;
-  const res = await fetch(sendUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chatId, message: text }),
-  });
-
-  if (!res.ok) {
-    const err = await res.text();
-    return json({ error: 'Green API error', detail: err }, 502);
+  // Enviar al grupo (enrutado por WA_PROVIDER: green | waha)
+  const sendRes = await sendWhatsApp(text, 'payment-reminder');
+  if (!sendRes.ok) {
+    return json({ error: 'WhatsApp error', detail: sendRes.detail }, 502);
   }
 
-  const result = await res.json();
   return json({
     ok: true,
-    idMessage: result.idMessage,
+    detail: sendRes.detail,
     stats: { total: all.length, completos: completos.length, parciales: parciales.length, pendientes: pendientes.length, pozo, metaTotal },
   });
 };

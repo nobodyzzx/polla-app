@@ -11,6 +11,7 @@
 import type { APIRoute } from 'astro';
 import { checkCronSecret, json } from '@/lib/cron';
 import { supabaseAdmin } from '@/lib/supabase';
+import { sendWhatsApp } from '@/lib/whatsapp';
 import { spanishName, teamFlag } from '@/lib/isoFlags';
 import { boliviaDayStart, JORNADA_CLOSE_MS } from '@/lib/jornada';
 import { betaNowMs } from '@/lib/betaTime';
@@ -150,30 +151,13 @@ export const GET: APIRoute = async ({ url, request }) => {
     return json({ preview: true, dayKey, cutoff: new Date(cutoffMs).toISOString(), matches: dayMatches.length, missing, text });
   }
 
-  // 7. Enviar por Green API.
-  const apiUrl     = import.meta.env.GREEN_API_URL;
-  const instanceId = import.meta.env.GREEN_API_INSTANCE;
-  const apiToken   = import.meta.env.GREEN_API_TOKEN;
-  const chatId     = import.meta.env.GREEN_API_CHAT_ID;
-
-  if (!apiUrl || !instanceId || !apiToken || !chatId) {
-    return json({ error: 'Green API env vars not configured' }, 500);
+  // 7. Enviar al grupo (enrutado por WA_PROVIDER: green | waha).
+  const sendRes = await sendWhatsApp(text, 'jornada-reminder');
+  if (!sendRes.configured) {
+    return json({ error: 'WhatsApp no configurado' }, 500);
   }
-
-  const sendUrl = `${apiUrl}/waInstance${instanceId}/sendMessage/${apiToken}`;
-  let sendOk = false;
-  let detail = '';
-  try {
-    const res = await fetch(sendUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chatId, message: text }),
-    });
-    sendOk = res.ok;
-    detail = await res.text();
-  } catch (e: any) {
-    detail = e.message;
-  }
+  const sendOk = sendRes.ok;
+  const detail = sendRes.detail;
 
   // 8. Registrar en sync_logs (con o sin error). El éxito sella la idempotencia.
   await supabaseAdmin.from('sync_logs').insert({

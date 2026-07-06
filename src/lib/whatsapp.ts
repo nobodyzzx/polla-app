@@ -13,16 +13,27 @@ function firstLine(message: string): string {
   return (message.split('\n')[0] ?? '').replace(/[*_~`]/g, '').trim().slice(0, 120);
 }
 
-export async function sendWhatsApp(message: string, source = 'mensaje'): Promise<WhatsAppResult> {
+/**
+ * Proveedor de mensajería activo. 'green' (Green API, tier free) | 'waha' (auto-hospedado
+ * en Dokploy, motor NOWEB/Baileys). Se controla con la env `WA_PROVIDER` de Vercel; por
+ * defecto 'green'. Ambos hablan a la misma cuenta/grupo de WhatsApp, así que el chatId
+ * (`...@g.us`) es el mismo — se reusa `GREEN_API_CHAT_ID` (o `WA_CHAT_ID` si se define).
+ */
+const WA_PROVIDER = (import.meta.env.WA_PROVIDER ?? 'green').toLowerCase();
+
+/** chatId del grupo de la polla, agnóstico del proveedor. */
+function groupChatId(): string | undefined {
+  return import.meta.env.WA_CHAT_ID ?? import.meta.env.GREEN_API_CHAT_ID;
+}
+
+/** Envío vía Green API (encola aunque esté notAuthorized → un 2xx NO garantiza entrega). */
+async function sendViaGreen(chatId: string, message: string): Promise<WhatsAppResult> {
   const apiUrl     = import.meta.env.GREEN_API_URL;
   const instanceId = import.meta.env.GREEN_API_INSTANCE;
   const apiToken   = import.meta.env.GREEN_API_TOKEN;
-  const chatId     = import.meta.env.GREEN_API_CHAT_ID;
-
-  if (!apiUrl || !instanceId || !apiToken || !chatId) {
+  if (!apiUrl || !instanceId || !apiToken) {
     return { ok: false, detail: 'Green API env vars not configured', configured: false };
   }
-
   const sendUrl = `${apiUrl}/waInstance${instanceId}/sendMessage/${apiToken}`;
   try {
     const res = await fetch(sendUrl, {
@@ -30,12 +41,46 @@ export async function sendWhatsApp(message: string, source = 'mensaje'): Promise
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ chatId, message }),
     });
-    // Bitácora central: registra cada envío exitoso (qué y a qué hora).
-    if (res.ok) await logEvent({ category: 'whatsapp', event: source, actor: 'sistema', summary: firstLine(message) });
     return { ok: res.ok, detail: await res.text(), configured: true };
   } catch (e: any) {
     return { ok: false, detail: e?.message ?? 'fetch failed', configured: true };
   }
+}
+
+/** Envío vía WAHA (self-hosted). Si la sesión no está WORKING, WAHA devuelve error real. */
+async function sendViaWaha(chatId: string, message: string): Promise<WhatsAppResult> {
+  const baseUrl = import.meta.env.WAHA_URL;
+  const apiKey  = import.meta.env.WAHA_API_KEY;
+  const session = import.meta.env.WAHA_SESSION ?? 'default';
+  if (!baseUrl || !apiKey) {
+    return { ok: false, detail: 'WAHA env vars not configured', configured: false };
+  }
+  try {
+    const res = await fetch(`${baseUrl.replace(/\/+$/, '')}/api/sendText`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Api-Key': apiKey },
+      body: JSON.stringify({ session, chatId, text: message }),
+    });
+    return { ok: res.ok, detail: await res.text(), configured: true };
+  } catch (e: any) {
+    return { ok: false, detail: e?.message ?? 'fetch failed', configured: true };
+  }
+}
+
+/** Envía a un chatId arbitrario (grupo o DM), enrutado por WA_PROVIDER. Sin bitácora. */
+export async function sendWhatsAppTo(chatId: string, message: string): Promise<WhatsAppResult> {
+  return WA_PROVIDER === 'waha' ? sendViaWaha(chatId, message) : sendViaGreen(chatId, message);
+}
+
+export async function sendWhatsApp(message: string, source = 'mensaje'): Promise<WhatsAppResult> {
+  const chatId = groupChatId();
+  if (!chatId) {
+    return { ok: false, detail: 'WhatsApp chatId not configured', configured: false };
+  }
+  const res = await sendWhatsAppTo(chatId, message);
+  // Bitácora central: registra cada envío exitoso (qué y a qué hora).
+  if (res.ok) await logEvent({ category: 'whatsapp', event: source, actor: 'sistema', summary: firstLine(message) });
+  return res;
 }
 
 /**
