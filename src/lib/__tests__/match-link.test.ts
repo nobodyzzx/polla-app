@@ -88,6 +88,35 @@ describe('linkMatches', () => {
     expect(out.size).toBe(1);
   });
 
+  it('empareja por equipos aunque la hora difiera (desfase de siembra, 1h)', () => {
+    const out = linkMatches(
+      [makeApiMatch({ id: 100, utcDate: '2026-07-06T01:00:00Z', homeTeam: { name: 'Mexico' }, awayTeam: { name: 'England' } })],
+      [{ id: 'db1', match_date: '2026-07-06T00:00:00Z', home_team: 'Mexico', away_team: 'England' }],
+    );
+    expect(out.size).toBe(1);
+    expect(out.get([...out.keys()][0])).toBe('db1');
+  });
+
+  it('elige el candidato más cercano en hora cuando el par se repite', () => {
+    const am = makeApiMatch({ id: 100, utcDate: '2026-07-06T01:00:00Z', homeTeam: { name: 'Mexico' }, awayTeam: { name: 'England' } });
+    const out = linkMatches(
+      [am],
+      [
+        { id: 'lejos', match_date: '2026-07-06T03:00:00Z', home_team: 'Mexico', away_team: 'England' },
+        { id: 'cerca', match_date: '2026-07-06T00:30:00Z', home_team: 'Mexico', away_team: 'England' },
+      ],
+    );
+    expect(out.get(am)).toBe('cerca');
+  });
+
+  it('no empareja por equipos si el desfase supera la tolerancia', () => {
+    const out = linkMatches(
+      [makeApiMatch({ id: 100, utcDate: '2026-07-06T12:00:00Z', homeTeam: { name: 'Mexico' }, awayTeam: { name: 'England' } })],
+      [{ id: 'db1', match_date: '2026-07-06T00:00:00Z', home_team: 'Mexico', away_team: 'England' }],
+    );
+    expect(out.size).toBe(0);
+  });
+
   it('empareja correctamente con distintos formatos de fecha', () => {
     const out = linkMatches(
       [makeApiMatch({ id: 100, utcDate: '2026-06-18T16:00Z', homeTeam: { name: 'Bolivia' }, awayTeam: { name: 'Argentina' } })],
