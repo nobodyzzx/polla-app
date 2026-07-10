@@ -1196,6 +1196,16 @@ let globalFormIdx = 0;
 
   init();
   document.addEventListener('astro:page-load', init);
+
+  // bfcache: al restaurar la página desde el back-forward cache (dar "atrás",
+  // o reactivar la pestaña/app en móvil), el navegador re-sirve el DOM cacheado
+  // en su estado PREVIO al guardado — reaparecen los steppers editables aunque
+  // el pronóstico YA esté en la BD, lo que confunde ("se activan los toggles").
+  // Recargar fuerza el render real del servidor ("✓ Guardado"); lo tecleado sin
+  // enviar se repuebla del borrador local en initDraft, así que no se pierde nada.
+  window.addEventListener('pageshow', (e: PageTransitionEvent) => {
+    if (e.persisted) location.reload();
+  });
 </script>
 
 <style>
