@@ -311,8 +311,10 @@ if (!isAuthed) {
                 </a>
               )}
               <a href="/pronosticos" class={navLink('/pronosticos')}>👥 La Polla</a>
-              {isPlayer && <a href="/mi-llave" class={navLink('/mi-llave')}>🗺️ Mi Llave</a>}
+              {/* Oculto: torneo casi terminado. La página /mi-llave sigue existiendo (no borrar).
+              {isPlayer && <a href="/mi-llave" class={navLink('/mi-llave')}>🗺️ Mi Llave</a>} */}
               <a href="/anuncios"    class={navLink('/anuncios')}>📣 Tablón</a>
+              <a href="/vitrina"     class={navLink('/vitrina')}>🏅 Vitrina</a>
               <a href="/reglas"      class={navLink('/reglas')}>📖 Reglas</a>
               {profile?.es_referi && (
                 <div class="relative group">
@@ -426,8 +428,10 @@ if (!isAuthed) {
               { href: '/grupos',      icon: '📊', label: 'Grupos y Eliminatorias' },
               ...(isPlayer ? [{ href: '/predictions', icon: '📅', label: 'Mis Pronósticos', startsWith: true }] : []),
               { href: '/pronosticos', icon: '👥', label: 'La Polla · Resultados' },
-              ...(isPlayer ? [{ href: '/mi-llave', icon: '🗺️', label: 'Mi Llave · Bracket' }] : []),
+              // Oculto: torneo casi terminado. La página /mi-llave sigue existiendo (no borrar).
+              // ...(isPlayer ? [{ href: '/mi-llave', icon: '🗺️', label: 'Mi Llave · Bracket' }] : []),
               { href: '/anuncios',    icon: '📣', label: 'Tablón de anuncios' },
+              { href: '/vitrina',     icon: '🏅', label: 'Vitrina de Campeones' },
               { href: '/reglas',      icon: '📖', label: 'Reglamento' },
               // Oculto: ya no se está cobrando (no borrar — /pago sigue existiendo).
               // { href: '/pago',        icon: '💰', label: 'Cómo pagar' },

@@ -8,15 +8,15 @@ function traducirError(msg: string): string {
   if (m.includes('invalid login credentials') || m.includes('invalid credentials'))
     return 'Correo o contraseña incorrectos';
   if (m.includes('email not confirmed'))
-    return 'Correo no confirmado. Revisá tu bandeja de entrada';
+    return 'Correo no confirmado. Revisa tu bandeja de entrada';
   if (m.includes('too many requests') || m.includes('rate limit'))
-    return 'Demasiados intentos. Esperá unos minutos e intentá de nuevo';
+    return 'Demasiados intentos. Espera unos minutos e intenta de nuevo';
   if (m.includes('user not found'))
     return 'No existe una cuenta con ese correo';
   if (m.includes('password') && m.includes('weak'))
     return 'La contraseña es demasiado débil';
   if (m.includes('network') || m.includes('fetch'))
-    return 'Error de conexión. Verificá tu internet';
+    return 'Error de conexión. Verifica tu internet';
   if (m.includes('email') && m.includes('invalid'))
     return 'El formato del correo no es válido';
   return msg; // fallback: mostrar original si no se reconoce

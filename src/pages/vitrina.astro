@@ -1,0 +1,213 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import { createRequestClient, supabaseAdmin } from '@/lib/supabase';
+import { rankProfiles } from '@/lib/standings';
+
+// Auth guard (mismo patrón que dashboard)
+const accessToken = Astro.cookies.get('sb-access-token')?.value;
+const refreshToken = Astro.cookies.get('sb-refresh-token')?.value;
+if (!accessToken || !refreshToken) {
+  Astro.cookies.delete('sb-access-token', { path: '/' });
+  Astro.cookies.delete('sb-refresh-token', { path: '/' });
+  return Astro.redirect('/login');
+}
+const supabase = createRequestClient();
+const { data: { user } } = await supabase.auth.setSession({
+  access_token: accessToken,
+  refresh_token: refreshToken,
+});
+if (!user) {
+  Astro.cookies.delete('sb-access-token', { path: '/' });
+  Astro.cookies.delete('sb-refresh-token', { path: '/' });
+  return Astro.redirect('/login');
+}
+
+// Ediciones pasadas ya cerradas. La actual (2026) se calcula en vivo abajo; cuando
+// el torneo termine del todo, se puede "congelar" el campeón moviéndolo aquí.
+// Orden: de la más reciente a la más antigua.
+interface EdicionPasada {
+  anio: number;
+  sede: string;
+  campeon: string;
+  nota?: string;
+  insignia?: string; // reemplaza el 🏆 (ej. "+1" para el que ganó con lo mínimo)
+}
+const HISTORIAL: EdicionPasada[] = [
+  { anio: 2022, sede: 'Catar', campeon: 'Edgar' },
+  { anio: 2018, sede: 'Rusia', campeon: 'TFB Harold 😎' },
+  {
+    anio: 2014,
+    sede: 'Brasil',
+    campeon: 'Boris 🇫🇷',
+    insignia: '+1',
+    nota: 'Ese año no jugamos todo el Mundial: solo apostamos la final. Boris la ganó con +1 (acertó la dirección, ni el marcador) y su premio fue una tarjeta de teléfono 📱. 😅',
+  },
+];
+
+// ── Edición actual (Mundial 2026), calculada en vivo ──────────────────────────
+const [{ data: standings }, { data: pendientes }, { data: myProfile }] = await Promise.all([
+  supabase
+    .from('profiles')
+    .select('id, username, puntos_totales, es_referi, participa')
+    .eq('expulsado', false)
+    .eq('participa', true)
+    .order('puntos_totales', { ascending: false }),
+  supabase.from('matches').select('stage').eq('is_finished', false),
+  supabase.from('profiles').select('username, puntos_totales, es_referi, participa').eq('id', user.id).single(),
+]);
+
+// Puntos que aún se pueden ganar: cada partido pendiente vale como máximo
+// 6 (eliminatoria) o 3 (grupos). Ver src/pages/reglas.astro.
+const puntosEnJuego = (pendientes ?? []).reduce(
+  (acc, m: any) => acc + (m.stage === 'knockout' ? 6 : 3),
+  0,
+);
+const partidosFaltan = (pendientes ?? []).length;
+
+// Ranking con el mismo desempate de la tabla (puntos → exactos → aciertos).
+const ranked = await rankProfiles(supabaseAdmin, standings ?? []);
+const podio = ranked.slice(0, 3);
+const lider = ranked[0] ?? null;
+const segundo = ranked[1] ?? null;
+
+const ventaja = lider && segundo ? (lider.puntos_totales ?? 0) - (segundo.puntos_totales ?? 0) : (lider ? lider.puntos_totales ?? 0 : 0);
+
+// El título está ASEGURADO si ya no queda nada en juego, o si la ventaja del
+// líder sobre el 2º es mayor a todo lo que aún se puede repartir.
+const campeonAsegurado = !!lider && (partidosFaltan === 0 || ventaja > puntosEnJuego);
+
+const medalla = ['🥇', '🥈', '🥉'];
+const podioBorde = [
+  'border-gold/50 bg-gold/5',
+  'border-slate-400/40 bg-slate-400/5',
+  'border-amber-700/40 bg-amber-700/5',
+];
+---
+
+<Layout title="Vitrina de Campeones" navProfile={myProfile} isAuthed={true}>
+  <div class="max-w-2xl mx-auto space-y-6">
+
+    <!-- Header -->
+    <div class="text-center space-y-2 py-2">
+      <img src="/trophy.svg" alt="Copa" class="h-16 mx-auto object-contain drop-shadow-[0_6px_18px_rgba(0,0,0,0.55)]" />
+      <h1 class="font-display text-4xl text-white tracking-wide">🏆 Vitrina de Campeones</h1>
+      <p class="text-slate-400 text-sm">El salón de la fama de la Polla — aquí queda grabado quién levantó la copa.</p>
+    </div>
+
+    <!-- Campeón / Líder actual -->
+    {lider && (
+      <section class="relative rounded-3xl overflow-hidden">
+        <div class="absolute inset-0 bg-gradient-to-br from-gold/25 via-gold/8 to-transparent"></div>
+        {campeonAsegurado && (
+          <div class="absolute inset-0 opacity-60 animate-shimmer bg-[length:200%_100%] bg-gradient-to-r from-transparent via-gold/25 to-transparent"></div>
+        )}
+        <div class="relative border border-gold/50 rounded-3xl p-6 sm:p-8 text-center space-y-4">
+
+          <span class={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider ${campeonAsegurado ? 'bg-gold/20 text-gold border border-gold/40' : 'bg-slate-700/40 text-slate-300 border border-slate-600/40'}`}>
+            {campeonAsegurado ? '👑 Campeón · Mundial 2026' : '🔥 Líder · título en disputa'}
+          </span>
+
+          <div class="text-6xl sm:text-7xl leading-none animate-pulse-slow">🏆</div>
+
+          <div>
+            <h2 class="font-display text-3xl sm:text-4xl text-gold tracking-wide">{lider.username}</h2>
+            <p class="text-slate-400 text-sm mt-1">
+              {campeonAsegurado
+                ? (partidosFaltan === 0 ? 'Campeón absoluto del torneo' : `Campeón matemático · a falta de ${partidosFaltan} ${partidosFaltan === 1 ? 'partido' : 'partidos'}`)
+                : 'Va primero, pero la copa aún no es suya'}
+            </p>
+          </div>
+
+          <!-- Stats del campeón -->
+          <div class="grid grid-cols-3 gap-2 max-w-sm mx-auto pt-2">
+            <div class="bg-brand-900/70 border border-brand-700/60 rounded-xl py-3">
+              <div class="text-2xl font-bold text-white">{lider.puntos_totales ?? 0}</div>
+              <div class="text-[11px] text-slate-500 uppercase tracking-wide">Puntos</div>
+            </div>
+            <div class="bg-brand-900/70 border border-brand-700/60 rounded-xl py-3">
+              <div class="text-2xl font-bold text-white">{lider.exactos}</div>
+              <div class="text-[11px] text-slate-500 uppercase tracking-wide">Exactos</div>
+            </div>
+            <div class="bg-brand-900/70 border border-brand-700/60 rounded-xl py-3">
+              <div class="text-2xl font-bold text-white">{lider.aciertos}</div>
+              <div class="text-[11px] text-slate-500 uppercase tracking-wide">Aciertos</div>
+            </div>
+          </div>
+
+          {segundo && (
+            <p class="text-xs text-slate-500 pt-1">
+              {campeonAsegurado
+                ? <>Cerró con <strong class="text-gold">+{ventaja}</strong> de ventaja sobre el 2º lugar.</>
+                : <>Le saca <strong class="text-white">{ventaja}</strong> al 2º, con <strong class="text-white">{puntosEnJuego}</strong> pts todavía en juego.</>}
+            </p>
+          )}
+        </div>
+      </section>
+    )}
+
+    <!-- Podio -->
+    {podio.length > 0 && (
+      <section class="bg-brand-900 border border-brand-700/60 rounded-2xl p-5 sm:p-6 space-y-4">
+        <h3 class="font-semibold text-white flex items-center gap-2"><span class="text-lg">🏅</span> Podio · Mundial 2026</h3>
+        <div class="space-y-2">
+          {podio.map((p, i) => (
+            <div class={`flex items-center gap-3 rounded-xl border px-4 py-3 ${podioBorde[i]}`}>
+              <span class="text-2xl w-8 text-center flex-shrink-0">{medalla[i]}</span>
+              <span class="flex-1 font-semibold text-white truncate">{p.username}</span>
+              <span class="text-xs text-slate-500 hidden sm:inline">{p.exactos} exactos · {p.aciertos} aciertos</span>
+              <span class="text-gold font-bold text-lg ml-1">{p.puntos_totales ?? 0}</span>
+            </div>
+          ))}
+        </div>
+        {!campeonAsegurado ? (
+          <p class="text-xs text-slate-500">El podio aún puede moverse: faltan {partidosFaltan} {partidosFaltan === 1 ? 'partido' : 'partidos'}.</p>
+        ) : partidosFaltan > 0 ? (
+          <p class="text-xs text-slate-500">El 1er puesto ya está definido. El 2º y 3º todavía se pelean en {partidosFaltan === 1 ? 'el partido' : `los ${partidosFaltan} partidos`} que {partidosFaltan === 1 ? 'falta' : 'faltan'}.</p>
+        ) : null}
+      </section>
+    )}
+
+    <!-- Ediciones anteriores -->
+    <section class="bg-brand-900 border border-brand-700/60 rounded-2xl p-5 sm:p-6 space-y-4">
+      <h3 class="font-semibold text-white flex items-center gap-2"><span class="text-lg">📜</span> Ediciones anteriores</h3>
+      {HISTORIAL.length === 0 ? (
+        <div class="text-center py-6 space-y-2">
+          <div class="text-4xl opacity-40">🗄️</div>
+          <p class="text-sm text-slate-400">Esta es la <strong class="text-slate-200">primera edición</strong> de la Polla.</p>
+          <p class="text-xs text-slate-500">Cada torneo que juguemos sumará un campeón a esta vitrina.</p>
+        </div>
+      ) : (
+        <div class="space-y-2">
+          {HISTORIAL.map((e) => (
+            <div class="flex items-start gap-3 rounded-xl border border-brand-700/60 bg-brand-800/40 px-4 py-3">
+              {e.insignia
+                ? <span class="flex-shrink-0 w-9 h-9 rounded-lg bg-gold/15 border border-gold/40 text-gold font-bold text-sm flex items-center justify-center">{e.insignia}</span>
+                : <span class="text-2xl flex-shrink-0 leading-none w-9 text-center">🏆</span>}
+              <div class="flex-1 min-w-0">
+                <div class="font-semibold text-gold truncate">{e.campeon}</div>
+                <div class="text-xs text-slate-500">Mundial {e.anio} · {e.sede}</div>
+                {e.nota && <div class="text-xs text-slate-400 italic mt-1">{e.nota}</div>}
+              </div>
+              <span class="text-lg flex-shrink-0" title="Campeón">🥇</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+
+    <p class="text-center text-xs text-slate-600 pb-2">No es democracia, es competición ⚽</p>
+  </div>
+</Layout>
+
+<style>
+  @keyframes shimmer {
+    0%   { background-position: 200% center; }
+    100% { background-position: -200% center; }
+  }
+  @keyframes pulse-slow {
+    0%, 100% { transform: scale(1); }
+    50%      { transform: scale(1.06); }
+  }
+  .animate-shimmer    { animation: shimmer 3.5s linear infinite; }
+  .animate-pulse-slow { animation: pulse-slow 2.8s ease-in-out infinite; }
+</style>

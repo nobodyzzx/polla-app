@@ -4,6 +4,7 @@ import { createRequestClient, supabaseAdmin } from '@/lib/supabase';
 import { fmtFecha } from '@/lib/fechas';
 import { boliviaDayStart } from '@/lib/jornada';
 import { teamFlag, spanishName } from '@/lib/isoFlags';
+import { construirHistorial, statsLider, statsDuelo } from '@/lib/historial';
 
 const accessToken  = Astro.cookies.get('sb-access-token')?.value;
 const refreshToken = Astro.cookies.get('sb-refresh-token')?.value;
@@ -257,6 +258,35 @@ const shareText = shareLines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 
 const ptsCls = (pts: number) => pts >= 6 ? 'text-gold' : pts >= 3 ? 'text-gol' : pts >= 1 ? 'text-slate-300' : 'text-slate-600';
 const firstOpenIdx = jornadaHistory.findIndex((j) => !j.anulada); // abrir la 1ª jornada no anulada
+
+// ── Retrospectiva: días como líder + duelo 1v1 ─────────────────────────────
+// Reconstruye la tabla acumulada por jornada (TODOS los jugadores) para stats
+// que no salen del historial propio. Solo aplica a jugadores.
+let histLider: ReturnType<typeof statsLider> | null = null;
+let duelo: ReturnType<typeof statsDuelo> | null = null;
+let rivals: { id: string; username: string }[] = [];
+let rivalId: string | null = null;
+let rivalName = '';
+if (isPlayer) {
+  const { dias, jugadores } = await construirHistorial(supabaseAdmin);
+  histLider = statsLider(dias, user.id);
+  // Rivales en orden de la tabla (más relevantes primero).
+  rivals = (ranking ?? [])
+    .filter((r: any) => r.id !== user.id)
+    .map((r: any) => ({ id: r.id, username: jugadores.find((j) => j.id === r.id)?.username ?? '?' }));
+  const validIds = new Set(rivals.map((r) => r.id));
+  const vsParam = Astro.url.searchParams.get('vs');
+  // Por defecto: el rival directo (el de arriba en la tabla; si soy líder, el de abajo).
+  const defaultRival =
+    ((ranking as any)?.[rankIndex - 1]?.id as string | undefined) ??
+    ((ranking as any)?.[rankIndex + 1]?.id as string | undefined) ??
+    rivals[0]?.id ?? null;
+  rivalId = vsParam && validIds.has(vsParam) ? vsParam : defaultRival;
+  if (rivalId) {
+    duelo = statsDuelo(dias, user.id, rivalId);
+    rivalName = rivals.find((r) => r.id === rivalId)?.username ?? '?';
+  }
+}
 ---
 
 <Layout title="Mi Perfil" navProfile={profile} isAuthed={true}>
@@ -492,6 +522,91 @@ const firstOpenIdx = jornadaHistory.findIndex((j) => !j.anulada); // abrir la 1�
             </div>
           </div>
         ))}
+      </div>
+    </div>
+    )}
+
+    <!-- Días como líder (solo jugadores) -->
+    {isPlayer && histLider && (
+    <div class="bg-brand-900 border border-brand-700/60 rounded-2xl p-5 space-y-3">
+      <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wide">👑 Días como líder</h2>
+      {histLider.diasLider > 0 ? (
+        <>
+          <div class="grid grid-cols-3 gap-2">
+            <div class="bg-brand-800/40 rounded-xl py-3 text-center">
+              <p class="font-display text-2xl text-gold leading-none">{histLider.diasLider}</p>
+              <p class="text-[11px] text-slate-500 mt-1">de {histLider.totalJornadas} jornadas</p>
+            </div>
+            <div class="bg-brand-800/40 rounded-xl py-3 text-center">
+              <p class="font-display text-2xl text-white leading-none">{histLider.mejorRacha}</p>
+              <p class="text-[11px] text-slate-500 mt-1">mejor racha 🔥</p>
+            </div>
+            <div class="bg-brand-800/40 rounded-xl py-3 text-center">
+              <p class="font-display text-2xl text-white leading-none">{histLider.rachaActual}</p>
+              <p class="text-[11px] text-slate-500 mt-1">racha actual</p>
+            </div>
+          </div>
+          {histLider.rachaActual > 0 && <p class="text-xs text-gold">Ahora mismo eres el líder de la tabla 👑</p>}
+        </>
+      ) : (
+        <p class="text-sm text-slate-400">Nunca fuiste líder de la tabla… <span class="text-slate-500">todavía 👀</span></p>
+      )}
+    </div>
+    )}
+
+    <!-- Duelo 1v1 (solo jugadores) -->
+    {isPlayer && duelo && rivalId && (
+    <div class="bg-brand-900 border border-brand-700/60 rounded-2xl p-5 space-y-4">
+      <div class="flex items-center justify-between gap-3 flex-wrap">
+        <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wide">🥊 Duelo 1v1</h2>
+        <form method="GET" data-astro-reload class="flex items-center gap-2">
+          <label for="vs-select" class="text-xs text-slate-500">vs</label>
+          <select id="vs-select" name="vs" onchange="this.form.submit()"
+            class="bg-brand-800 border border-brand-700 rounded-lg text-sm text-white px-2 py-1.5 max-w-[170px] truncate">
+            {rivals.map((r) => (
+              <option value={r.id} selected={r.id === rivalId}>{r.username}</option>
+            ))}
+          </select>
+        </form>
+      </div>
+
+      <!-- Marcador del duelo: jornadas por encima de cada uno -->
+      <div class="flex items-center justify-center gap-4 py-1">
+        <div class="text-center flex-1 min-w-0">
+          <p class="text-xs text-slate-500 truncate">Tú</p>
+          <p class="font-display text-3xl text-gold leading-none">{duelo.diasArriba}</p>
+          <p class="text-[11px] text-slate-500 mt-1">jornadas arriba</p>
+        </div>
+        <div class="text-slate-600 font-bold">vs</div>
+        <div class="text-center flex-1 min-w-0">
+          <p class="text-xs text-slate-500 truncate">{rivalName}</p>
+          <p class="font-display text-3xl text-white leading-none">{duelo.diasAbajo}</p>
+          <p class="text-[11px] text-slate-500 mt-1">jornadas arriba</p>
+        </div>
+      </div>
+
+      <!-- Barra visual: dominio a lo largo del torneo -->
+      <div class="flex h-2.5 rounded-full overflow-hidden bg-brand-800">
+        <div class="bg-gold" style={`width:${(duelo.diasArriba / Math.max(1, duelo.serie.length)) * 100}%`}></div>
+        <div class="bg-slate-600" style={`width:${(duelo.diasIgual / Math.max(1, duelo.serie.length)) * 100}%`}></div>
+        <div class="bg-fifared/70" style={`width:${(duelo.diasAbajo / Math.max(1, duelo.serie.length)) * 100}%`}></div>
+      </div>
+      {duelo.diasIgual > 0 && <p class="text-center text-[11px] text-slate-500">{duelo.diasIgual} jornadas empatados</p>}
+
+      <!-- Detalles -->
+      <div class="grid grid-cols-3 gap-2 text-center">
+        <div class="bg-brand-800/40 rounded-xl py-2.5">
+          <p class={`font-display text-lg leading-none ${duelo.difActual > 0 ? 'text-gold' : duelo.difActual < 0 ? 'text-fifared' : 'text-white'}`}>{duelo.difActual > 0 ? '+' : ''}{duelo.difActual}</p>
+          <p class="text-[10px] text-slate-500 mt-1">diferencia hoy</p>
+        </div>
+        <div class="bg-brand-800/40 rounded-xl py-2.5">
+          <p class="font-display text-lg text-gol leading-none">+{duelo.maxVentaja}</p>
+          <p class="text-[10px] text-slate-500 mt-1">mayor ventaja</p>
+        </div>
+        <div class="bg-brand-800/40 rounded-xl py-2.5">
+          <p class="font-display text-lg text-fifared leading-none">{duelo.maxDeficit}</p>
+          <p class="text-[10px] text-slate-500 mt-1">mayor desventaja</p>
+        </div>
       </div>
     </div>
     )}
