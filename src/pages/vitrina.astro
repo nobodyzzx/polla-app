@@ -44,6 +44,19 @@ const HISTORIAL: EdicionPasada[] = [
   },
 ];
 
+// ¿Hay un torneo EN CURSO? Cuando el Mundial termina, se pone en false: la vitrina
+// deja de calcular en vivo y muestra al campeón CONGELADO (permanente, aunque la BD
+// se resetee para el próximo torneo). Al arrancar uno nuevo, volver a true.
+const TORNEO_EN_CURSO = false;
+
+// Campeón y podio CONGELADOS del Mundial 2026 (cifras finales oficiales).
+const CAMPEON_2026 = { username: 'Rodrigo', puntos_totales: 102, exactos: 17, aciertos: 68 };
+const PODIO_2026 = [
+  { username: 'Rodrigo',       puntos_totales: 102, exactos: 17, aciertos: 68 },
+  { username: 'TFB Harold 😎', puntos_totales: 89,  exactos: 16, aciertos: 56 },
+  { username: 'Dimicita',      puntos_totales: 89,  exactos: 12, aciertos: 64 },
+];
+
 // ── Edición actual (Mundial 2026), calculada en vivo ──────────────────────────
 const [{ data: standings }, { data: pendientes }, { data: myProfile }] = await Promise.all([
   supabase
@@ -65,16 +78,17 @@ const puntosEnJuego = (pendientes ?? []).reduce(
 const partidosFaltan = (pendientes ?? []).length;
 
 // Ranking con el mismo desempate de la tabla (puntos → exactos → aciertos).
-const ranked = await rankProfiles(supabaseAdmin, standings ?? []);
-const podio = ranked.slice(0, 3);
-const lider = ranked[0] ?? null;
-const segundo = ranked[1] ?? null;
+// Con torneo en curso se calcula en vivo; congelado, se usa el podio oficial.
+const ranked = TORNEO_EN_CURSO ? await rankProfiles(supabaseAdmin, standings ?? []) : [];
+const podio = TORNEO_EN_CURSO ? ranked.slice(0, 3) : PODIO_2026;
+const lider = TORNEO_EN_CURSO ? (ranked[0] ?? null) : CAMPEON_2026;
+const segundo = TORNEO_EN_CURSO ? (ranked[1] ?? null) : PODIO_2026[1];
 
 const ventaja = lider && segundo ? (lider.puntos_totales ?? 0) - (segundo.puntos_totales ?? 0) : (lider ? lider.puntos_totales ?? 0 : 0);
 
-// El título está ASEGURADO si ya no queda nada en juego, o si la ventaja del
-// líder sobre el 2º es mayor a todo lo que aún se puede repartir.
-const campeonAsegurado = !!lider && (partidosFaltan === 0 || ventaja > puntosEnJuego);
+// El título está ASEGURADO si el torneo terminó (congelado), si ya no queda nada
+// en juego, o si la ventaja del líder es mayor a todo lo que aún se puede repartir.
+const campeonAsegurado = !TORNEO_EN_CURSO || (!!lider && (partidosFaltan === 0 || ventaja > puntosEnJuego));
 
 const medalla = ['🥇', '🥈', '🥉'];
 const podioBorde = [
